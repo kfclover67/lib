@@ -192,10 +192,16 @@ local function Connect(signal, fn)
 end
 
 local safeStub
+local SAFE_FIELDS = {
+    Value = true, State = true, Mode = true, Text = true, Id = true, Type = true,
+    Callbacks = true, Instance = true, Transparency = true, Values = true,
+    IgnoreConfig = true, AddonHolder = true, Row = true, Container = true,
+}
 local function safe(tbl, label)
     if getmetatable(tbl) then return tbl end
     return setmetatable(tbl, {
         __index = function(_, key)
+            if SAFE_FIELDS[key] then return nil end
             if type(key) ~= "string" or not key:match("^[A-Z]") then
                 return nil
             end
@@ -210,10 +216,49 @@ safeStub = safe({}, "stub")
 
 local function formatImage(icon)
     if icon == nil or icon == "" then return nil end
-    if type(icon) == "number" then return "rbxassetid://" .. icon end
+    if type(icon) == "number" then
+        if icon <= 0 then return nil end
+        return "rbxassetid://" .. icon
+    end
     local s = tostring(icon)
+    if s == "0" then return nil end
     if s:find("rbxasset") then return s end
+    local digits = s:match("^(%d+)$")
+    if digits and tonumber(digits) <= 0 then return nil end
     return "rbxassetid://" .. s
+end
+
+local function formatDisplayValue(val)
+    if val == nil then return "..."
+    local t = type(val)
+    if t == "string" then return val == "" and "..." or val
+    elseif t == "number" or t == "boolean" then return tostring(val)
+    elseif t == "table" then return "..."
+    end
+    return "..."
+end
+
+local function normalizeKeybind(key)
+    if key == nil or key == "" then return nil end
+    if type(key) ~= "string" then return nil end
+    return key
+end
+
+local function resolveDropdownDefault(values, default, multi)
+    if default == nil then return multi and {} or nil end
+    if multi then
+        if type(default) == "table" then
+            local t = {}
+            for _, v in pairs(default) do t[v] = true end
+            return t
+        end
+        return {}
+    end
+    if type(default) == "number" then
+        local idx = default <= 0 and 1 or default
+        return values[idx]
+    end
+    return default
 end
 
 local function parseTitle(raw, fallbackIcon)
@@ -513,23 +558,25 @@ function Library:CreateWindow(cfg)
         Position = UDim2.new(0.5, 0, 0, 20),
         Size = UDim2.new(1, -16, 0, 32),
     })
-    local titleInner = New("Frame", {
-        Name = "TitleInner",
-        Parent = titleHolder,
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        AutomaticSize = Enum.AutomaticSize.XY,
-    })
-    New("UIListLayout", {
-        Parent = titleInner,
-        FillDirection = Enum.FillDirection.Horizontal,
-        HorizontalAlignment = Enum.HorizontalAlignment.Center,
-        VerticalAlignment = Enum.VerticalAlignment.Center,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 6),
-    })
+    local titleParent = titleHolder
     if titleIcon then
+        local titleInner = New("Frame", {
+            Name = "TitleInner",
+            Parent = titleHolder,
+            BackgroundTransparency = 1,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            AutomaticSize = Enum.AutomaticSize.XY,
+        })
+        titleParent = titleInner
+        New("UIListLayout", {
+            Parent = titleInner,
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 6),
+        })
         local titleIconObj = New("ImageLabel", {
             Name = "TitleIcon",
             Parent = titleInner,
@@ -544,14 +591,17 @@ function Library:CreateWindow(cfg)
     end
     local titleLabel = New("TextLabel", {
         Name = "Title",
-        Parent = titleInner,
+        Parent = titleParent,
         BackgroundTransparency = 1,
-        AutomaticSize = Enum.AutomaticSize.XY,
+        AutomaticSize = titleIcon and Enum.AutomaticSize.XY or Enum.AutomaticSize.None,
+        AnchorPoint = titleIcon and Vector2.new(0, 0) or Vector2.new(0.5, 0.5),
+        Position = titleIcon and UDim2.fromScale(0, 0) or UDim2.fromScale(0.5, 0.5),
+        Size = titleIcon and UDim2.fromScale(0, 0) or UDim2.new(1, 0, 1, 0),
         Font = Library.FontBold,
         Text = title,
         TextSize = 23,
         TextColor3 = Library.Theme.TitleColor,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        TextXAlignment = titleIcon and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center,
         LayoutOrder = 2,
     })
     Library:AddToRegistry(titleLabel, "TextColor3", "TitleColor")
@@ -1405,14 +1455,10 @@ function Library:_Dropdown(container, id, info)
     New("UIListLayout", { Parent = scroller, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
     local Dropdown = { Value = multi and {} or nil, Values = values, Callbacks = {}, Type = "Dropdown", Id = id, IgnoreConfig = Library._ignoreConfig }
     if info.Default ~= nil then
-        if multi then
-            if type(info.Default) == "table" then
-                for _, v in pairs(info.Default) do Dropdown.Value[v] = true end
-            end
-        else
-            if type(info.Default) == "number" then Dropdown.Value = values[info.Default]
-            else Dropdown.Value = info.Default end
-        end
+        Dropdown.Value = resolveDropdownDefault(values, info.Default, multi)
+    end
+    if not multi and type(Dropdown.Value) ~= "string" and type(Dropdown.Value) ~= "number" then
+        Dropdown.Value = nil
     end
     function Dropdown:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
     local function refreshDisplay()
@@ -1422,7 +1468,7 @@ function Library:_Dropdown(container, id, info)
             table.sort(parts)
             display.Text = #parts > 0 and table.concat(parts, ", ") or "none"
         else
-            display.Text = Dropdown.Value ~= nil and tostring(Dropdown.Value) or "..."
+            display.Text = formatDisplayValue(Dropdown.Value)
         end
     end
     local function fire()
@@ -1467,7 +1513,14 @@ function Library:_Dropdown(container, id, info)
         end
     end
     function Dropdown:SetValues(newValues) self.Values = newValues or {}; rebuild(); refreshDisplay(); return self end
-    function Dropdown:SetValue(v) self.Value = v; rebuild(); refreshDisplay(); fire(); return self end
+    function Dropdown:SetValue(v)
+        if type(v) == "function" or type(v) == "userdata" or type(v) == "thread" then v = nil end
+        self.Value = v
+        rebuild()
+        refreshDisplay()
+        fire()
+        return self
+    end
     local function posFn()
         local count = math.min(#Dropdown.Values, 7)
         local h = math.max(count * 26 + 8, 30)
@@ -1497,7 +1550,7 @@ end
 
 function Library:_KeyPicker(holder, id, info)
     info = info or {}
-    local current = info.Default and info.Default ~= "" and info.Default or nil
+    local current = normalizeKeybind(info.Default)
     local btn = New("TextButton", {
         Parent = holder, LayoutOrder = nextAddonOrder(holder), BackgroundColor3 = Library.Theme.Inline,
         AutoButtonColor = false, Font = Library.Font,
@@ -1518,9 +1571,9 @@ function Library:_KeyPicker(holder, id, info)
     function KeyPicker:OnClick(fn) self._click = fn return self end
     function KeyPicker:GetState() return self.State end
     function KeyPicker:SetValue(key)
-        if key == "" then key = nil end
+        key = normalizeKeybind(key)
         self.Value = key
-        btn.Text = key and string.lower(tostring(key)) or "none"
+        btn.Text = key and string.lower(key) or "none"
         if self._onRebind then task.spawn(self._onRebind, key) end
         Library:_UpdateKeybindList()
         return self
@@ -1572,9 +1625,10 @@ function Library:_KeyPicker(holder, id, info)
     })
     local listening = false
     local function finishCapture(key)
+        key = normalizeKeybind(key)
         if key == "Backspace" or key == "Escape" then key = nil end
         KeyPicker.Value = key
-        btn.Text = key and string.lower(tostring(key)) or "none"
+        btn.Text = key and string.lower(key) or "none"
         btn.TextColor3 = Library.Theme.DarkText
         listening = false
         Library._capturing = false
@@ -1841,7 +1895,8 @@ function Library:_UpdateKeybindList()
     end
     local shown = 0
     for i, kp in ipairs(self.KeybindEntries) do
-        if kp._showInList and kp.Value then
+        local keyName = normalizeKeybind(kp.Value)
+        if kp._showInList and keyName then
             local include = false
             local mode = string.lower(self.KeybindListMode or "toggled")
             if mode == "all" then include = true
@@ -1854,7 +1909,7 @@ function Library:_UpdateKeybindList()
                     LayoutOrder = i, Font = self.Font, TextSize = 13,
                     TextColor3 = kp.State and self.Theme.Accent or self.Theme.Text,
                     TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 141,
-                    Text = string.format("%s [%s]", kp.Text, string.lower(tostring(kp.Value))),
+                    Text = string.format("%s [%s]", kp.Text, string.lower(keyName)),
                 })
             end
         end
@@ -2081,9 +2136,12 @@ function Library:BuildSettingsTab(tab)
     local cfgBox = tab:AddLeftGroupbox("configs", "save / load / delete")
     local nameInput = cfgBox:AddInput("config_name", { Default = "", Placeholder = "config name" })
     local listDropdown = cfgBox:AddDropdown("config_list", {
-        Text = "configs", Values = self:GetConfigList(), Default = 0,
+        Text = "configs", Values = self:GetConfigList(), Default = 1,
     })
-    if #self:GetConfigList() == 0 then listDropdown:SetValues({ "no configs" }) end
+    if #self:GetConfigList() == 0 then
+        listDropdown:SetValues({ "no configs" })
+        listDropdown:SetValue("no configs")
+    end
     local function refreshList()
         local list = self:GetConfigList()
         if #list == 0 then list = { "no configs" } end
@@ -2179,8 +2237,11 @@ function Library:BuildSettingsTab(tab)
     end
 
     local themeNameInput = themeBox:AddInput("theme_name", { Default = "", Placeholder = "theme name" })
-    local themeDropdown = themeBox:AddDropdown("theme_list", { Text = "themes", Values = self:GetThemeList(), Default = 0 })
-    if #self:GetThemeList() == 0 then themeDropdown:SetValues({ "no themes" }) end
+    local themeDropdown = themeBox:AddDropdown("theme_list", { Text = "themes", Values = self:GetThemeList(), Default = 1 })
+    if #self:GetThemeList() == 0 then
+        themeDropdown:SetValues({ "no themes" })
+        themeDropdown:SetValue("no themes")
+    end
     themeBox:AddButton({ Text = "save theme", Func = function()
         if themeNameInput.Value ~= "" then self:SaveTheme(themeNameInput.Value); themeDropdown:SetValues(self:GetThemeList()) end
     end }):AddButton({ Text = "load theme", Func = function()
