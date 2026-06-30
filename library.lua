@@ -101,6 +101,8 @@ local Library = {
     ConfigFolder = "star",
     KeybindListVisible = true,
     KeybindListMode = "toggled",
+    UnloadCallbacks = {},
+    Unloaded = false,
 }
 Library.__index = Library
 
@@ -194,8 +196,11 @@ local function safe(tbl, label)
     if getmetatable(tbl) then return tbl end
     return setmetatable(tbl, {
         __index = function(_, key)
-            warn("[star] " .. label .. " has no method '" .. tostring(key) .. "' — skipped")
-            return function()
+            if type(key) ~= "string" or not key:match("^[A-Z]") then
+                return nil
+            end
+            return function(...)
+                warn("[star] " .. label .. " has no method '" .. tostring(key) .. "' — skipped")
                 return safeStub
             end
         end,
@@ -209,6 +214,20 @@ local function formatImage(icon)
     local s = tostring(icon)
     if s:find("rbxasset") then return s end
     return "rbxassetid://" .. s
+end
+
+local function parseTitle(raw, fallbackIcon)
+    local text, icon = "star", nil
+    if type(raw) == "string" then
+        text = raw
+    elseif type(raw) == "table" then
+        text = raw[1] or raw.Text or raw.text or raw.Name or raw.name or "star"
+        icon = raw[2] or raw.Icon or raw.icon or raw.Image or raw.image
+    elseif raw ~= nil then
+        text = tostring(raw)
+    end
+    if not icon then icon = fallbackIcon end
+    return tostring(text), formatImage(icon)
 end
 
 local function Tween(obj, time, props)
@@ -420,8 +439,9 @@ end
 
 function Library:CreateWindow(cfg)
     cfg = cfg or {}
-    local title    = cfg.Title or "star"
-    Library.Title  = title
+    local title, titleIcon = parseTitle(cfg.Title, cfg.Icon or cfg.TitleIcon)
+    Library.Title = title
+    Library.TitleIcon = titleIcon
     local mobile   = self.IsMobile or cfg.Mobile
     local baseSize = cfg.Size or UDim2.fromOffset(720, 540)
     local sidebarW = cfg.SidebarWidth or 150
@@ -485,20 +505,57 @@ function Library:CreateWindow(cfg)
         BorderSizePixel = 0,
     }), "BackgroundColor3", "Border")
 
-    local titleLabel = New("TextLabel", {
-        Name = "Title",
+    local titleHolder = New("Frame", {
+        Name = "TitleHolder",
         Parent = sidebar,
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 24),
-        Size = UDim2.new(1, -16, 0, 30),
+        Position = UDim2.new(0.5, 0, 0, 20),
+        Size = UDim2.new(1, -16, 0, 32),
+    })
+    local titleInner = New("Frame", {
+        Name = "TitleInner",
+        Parent = titleHolder,
+        BackgroundTransparency = 1,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        AutomaticSize = Enum.AutomaticSize.XY,
+    })
+    New("UIListLayout", {
+        Parent = titleInner,
+        FillDirection = Enum.FillDirection.Horizontal,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 6),
+    })
+    if titleIcon then
+        local titleIconObj = New("ImageLabel", {
+            Name = "TitleIcon",
+            Parent = titleInner,
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(22, 22),
+            Image = titleIcon,
+            ImageColor3 = Library.Theme.TitleColor,
+            LayoutOrder = 1,
+        })
+        Library:AddToRegistry(titleIconObj, "ImageColor3", "TitleColor")
+        Library.TitleIconLabel = titleIconObj
+    end
+    local titleLabel = New("TextLabel", {
+        Name = "Title",
+        Parent = titleInner,
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.XY,
         Font = Library.FontBold,
         Text = title,
         TextSize = 23,
         TextColor3 = Library.Theme.TitleColor,
-        TextXAlignment = Enum.TextXAlignment.Center,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 2,
     })
     Library:AddToRegistry(titleLabel, "TextColor3", "TitleColor")
+    Library.TitleLabel = titleLabel
 
     local tabHolder = New("Frame", {
         Name = "TabHolder",
@@ -1082,84 +1139,97 @@ function Library:_BuildSection(container)
     end
 
     function Section:AddSlider(id, info)
-        info = info or {}
-        local min      = info.Min or 0
-        local max      = info.Max or 100
-        local rounding = info.Rounding or 0
-        local suffix   = info.Suffix or ""
-        local default  = math.clamp(info.Default or min, min, max)
-        local row = makeRow(container, 34)
-        local label = New("TextLabel", {
-            Parent = row, BackgroundTransparency = 1, Size = UDim2.new(1, -90, 0, 16),
-            Font = Library.Font, Text = info.Text or id, TextSize = 14,
-            TextColor3 = Library.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
-        })
-        Library:AddToRegistry(label, "TextColor3", "Text")
-        local valueLabel = New("TextLabel", {
-            Parent = row, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
-            Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 90, 0, 16),
-            Font = Library.Font, Text = "", TextSize = 14, TextColor3 = Library.Theme.DarkText,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        })
-        Library:AddToRegistry(valueLabel, "TextColor3", "DarkText")
-        local track = New("Frame", {
-            Parent = row, Position = UDim2.new(0, 0, 1, -8), Size = UDim2.new(1, 0, 0, 4),
-            BackgroundColor3 = Library.Theme.Inline, BorderSizePixel = 0,
-        })
-        Library:AddToRegistry(track, "BackgroundColor3", "Inline")
-        Corner(2, track)
-        Library:AddToRegistry(Stroke(track, Library.Theme.Border, 1, 0), "Color", "Border")
-        local fill = New("Frame", {
-            Parent = track, Size = UDim2.fromScale(0, 1), BackgroundColor3 = Library.Theme.Accent, BorderSizePixel = 0,
-        })
-        Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
-        Corner(2, fill)
-        local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = id, IgnoreConfig = Library._ignoreConfig }
-        function Slider:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
-        local function round(v)
-            if rounding <= 0 then return math.floor(v + 0.5) end
-            local m = 10 ^ rounding
-            return math.floor(v * m + 0.5) / m
+        local function buildSlider(sid, sinfo)
+            sinfo = sinfo or {}
+            local min      = sinfo.Min or 0
+            local max      = sinfo.Max or 100
+            local rounding = sinfo.Rounding or 0
+            local suffix   = sinfo.Suffix or ""
+            local default  = math.clamp(sinfo.Default or min, min, max)
+            local row = makeRow(container, 34)
+            local label = New("TextLabel", {
+                Parent = row, BackgroundTransparency = 1, Size = UDim2.new(1, -90, 0, 16),
+                Font = Library.Font, Text = sinfo.Text or sid, TextSize = 14,
+                TextColor3 = Library.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
+            })
+            Library:AddToRegistry(label, "TextColor3", "Text")
+            local valueLabel = New("TextLabel", {
+                Parent = row, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 90, 0, 16),
+                Font = Library.Font, Text = "", TextSize = 14, TextColor3 = Library.Theme.DarkText,
+                TextXAlignment = Enum.TextXAlignment.Right,
+            })
+            Library:AddToRegistry(valueLabel, "TextColor3", "DarkText")
+            local track = New("Frame", {
+                Parent = row, Position = UDim2.new(0, 0, 1, -8), Size = UDim2.new(1, 0, 0, 4),
+                BackgroundColor3 = Library.Theme.Inline, BorderSizePixel = 0,
+            })
+            Library:AddToRegistry(track, "BackgroundColor3", "Inline")
+            Corner(2, track)
+            Library:AddToRegistry(Stroke(track, Library.Theme.Border, 1, 0), "Color", "Border")
+            local fill = New("Frame", {
+                Parent = track, Size = UDim2.fromScale(0, 1), BackgroundColor3 = Library.Theme.Accent, BorderSizePixel = 0,
+            })
+            Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
+            Corner(2, fill)
+            local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = sid, IgnoreConfig = Library._ignoreConfig }
+            function Slider:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+            local function round(v)
+                if rounding <= 0 then return math.floor(v + 0.5) end
+                local m = 10 ^ rounding
+                return math.floor(v * m + 0.5) / m
+            end
+            function Slider:SetValue(v, skipCb)
+                v = math.clamp(round(v), min, max)
+                self.Value = v
+                local alpha = (max - min) == 0 and 0 or (v - min) / (max - min)
+                fill.Size = UDim2.fromScale(alpha, 1)
+                valueLabel.Text = tostring(v) .. (suffix ~= "" and (" " .. suffix) or "")
+                if not skipCb then
+                    for _, fn in ipairs(self.Callbacks) do task.spawn(fn, v) end
+                    if sinfo.Callback then task.spawn(sinfo.Callback, v) end
+                end
+                return self
+            end
+            function Slider:AddSlider(a, b)
+                local nextId, nextInfo = sid, sinfo
+                if type(a) == "string" and type(b) == "table" then
+                    nextId, nextInfo = a, b
+                elseif type(a) == "table" then
+                    nextInfo = a
+                    nextId = a.Id or sid .. "_2"
+                end
+                return buildSlider(nextId, nextInfo)
+            end
+            local dragging = false
+            local function update(inputX)
+                local rel = math.clamp((inputX - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+                Slider:SetValue(min + (max - min) * rel)
+            end
+            Connect(track.InputBegan, function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true
+                    update(input.Position.X)
+                end
+            end)
+            Connect(UserInputService.InputChanged, function(input)
+                if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch) then
+                    update(input.Position.X)
+                end
+            end)
+            Connect(UserInputService.InputEnded, function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = false
+                end
+            end)
+            Slider:SetValue(default, true)
+            Library.Options[sid] = Slider
+            return safe(Slider, "Slider")
         end
-        function Slider:SetValue(v, skipCb)
-            v = math.clamp(round(v), min, max)
-            self.Value = v
-            local alpha = (max - min) == 0 and 0 or (v - min) / (max - min)
-            fill.Size = UDim2.fromScale(alpha, 1)
-            valueLabel.Text = tostring(v) .. (suffix ~= "" and (" " .. suffix) or "")
-            if not skipCb then
-                for _, fn in ipairs(self.Callbacks) do task.spawn(fn, v) end
-                if info.Callback then task.spawn(info.Callback, v) end
-            end
-            return self
-        end
-        local dragging = false
-        local function update(inputX)
-            local rel = math.clamp((inputX - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-            Slider:SetValue(min + (max - min) * rel)
-        end
-        Connect(track.InputBegan, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                update(input.Position.X)
-            end
-        end)
-        Connect(UserInputService.InputChanged, function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-                update(input.Position.X)
-            end
-        end)
-        Connect(UserInputService.InputEnded, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
-        Slider:SetValue(default, true)
-        Library.Options[id] = Slider
-        return safe(Slider, "Slider")
+        return buildSlider(id, info)
     end
 
     function Section:AddInput(id, info)
@@ -1763,9 +1833,10 @@ function Library:CreateKeybindList()
 end
 
 function Library:_UpdateKeybindList()
-    if not self.KeybindFrame then return end
-    if not self.KeybindListVisible then self.KeybindFrame.Visible = false return end
-    for _, c in ipairs(self.KeybindFrame:GetChildren()) do
+    local frame = self.KeybindFrame
+    if typeof(frame) ~= "Instance" or not frame:IsA("GuiObject") then return end
+    if not self.KeybindListVisible then frame.Visible = false return end
+    for _, c in ipairs(frame:GetChildren()) do
         if c:IsA("TextLabel") and c.LayoutOrder >= 0 then c:Destroy() end
     end
     local shown = 0
@@ -1779,7 +1850,7 @@ function Library:_UpdateKeybindList()
             if include then
                 shown += 1
                 local row = New("TextLabel", {
-                    Parent = self.KeybindFrame, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 15),
+                    Parent = frame, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 15),
                     LayoutOrder = i, Font = self.Font, TextSize = 13,
                     TextColor3 = kp.State and self.Theme.Accent or self.Theme.Text,
                     TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 141,
@@ -1788,7 +1859,7 @@ function Library:_UpdateKeybindList()
             end
         end
     end
-    self.KeybindFrame.Visible = shown > 0
+    frame.Visible = shown > 0
 end
 
 local function ensureFolders()
@@ -2154,21 +2225,22 @@ function Library:LoadAutoload()
     end
 end
 
+function Library:OnUnload(fn)
+    if type(fn) == "function" then
+        table.insert(self.UnloadCallbacks, fn)
+    end
+    return self
+end
+
 function Library:Unload()
+    if self.Unloaded then return end
+    self.Unloaded = true
+    for _, fn in ipairs(self.UnloadCallbacks) do
+        pcall(fn)
+    end
     for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
     table.clear(self.Connections)
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
-
-setmetatable(Library, {
-    __index = function(t, k)
-        local v = rawget(t, k)
-        if v ~= nil then return v end
-        warn("[star] Library has no method '" .. tostring(k) .. "' — skipped")
-        return function()
-            return safeStub
-        end
-    end,
-})
 
 return Library
