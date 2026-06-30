@@ -191,28 +191,13 @@ local function Connect(signal, fn)
     return c
 end
 
-local safeStub
-local SAFE_FIELDS = {
-    Value = true, State = true, Mode = true, Text = true, Id = true, Type = true,
-    Callbacks = true, Instance = true, Transparency = true, Values = true,
-    IgnoreConfig = true, AddonHolder = true, Row = true, Container = true,
-}
-local function safe(tbl, label)
-    if getmetatable(tbl) then return tbl end
-    return setmetatable(tbl, {
-        __index = function(_, key)
-            if SAFE_FIELDS[key] then return nil end
-            if type(key) ~= "string" or not key:match("^[A-Z]") then
-                return nil
-            end
-            return function(...)
-                warn("[star] " .. label .. " has no method '" .. tostring(key) .. "' — skipped")
-                return safeStub
-            end
-        end,
-    })
+local function spawnFn(fn, ...)
+    if type(fn) == "function" then task.spawn(fn, ...) end
 end
-safeStub = safe({}, "stub")
+
+local function pushCallback(list, fn)
+    if type(fn) == "function" then table.insert(list, fn) end
+end
 
 local function formatImage(icon)
     if icon == nil or icon == "" then return nil end
@@ -230,7 +215,6 @@ end
 
 local function formatDisplayValue(val)
     if val == nil then return "..."
-    end
     local t = type(val)
     if t == "string" then return val == "" and "..." or val
     elseif t == "number" or t == "boolean" then return tostring(val)
@@ -867,7 +851,7 @@ function Library:CreateWindow(cfg)
 
         table.insert(Window.Tabs, Tab)
         if #Window.Tabs == 1 then select() end
-        return safe(Tab, "Tab")
+        return Tab
     end
 
     function Window:Toggle()
@@ -878,7 +862,7 @@ function Library:CreateWindow(cfg)
 
     Library.Window = Window
     Library:_InitGlobals(main, mobile)
-    return safe(Window, "Window")
+    return Window
 end
 
 function Library:_InitGlobals(main, mobile)
@@ -1051,17 +1035,21 @@ function Library:_BuildSection(container)
         function Label:SetText(t) label.Text = t return Label end
         function Label:AddColorPicker(id, info) return Library:_ColorPicker(holder, id, info) end
         function Label:AddKeyPicker(id, info)   return Library:_KeyPicker(holder, id, info) end
-        return safe(Label, "Label")
+        return Label
     end
 
     local function normalizeButton(a, b)
         if type(a) == "string" and type(b) == "table" then
             b.Id = b.Id or a
             return b
+        elseif type(a) == "string" and type(b) == "function" then
+            return { Text = a, Func = b }
         elseif type(a) == "string" then
-            return { Text = a }
+            return { Text = a, Id = a }
         elseif type(a) == "table" then
             return a
+        elseif type(a) == "function" then
+            return { Text = "button", Func = a }
         end
         return {}
     end
@@ -1107,14 +1095,14 @@ function Library:_BuildSection(container)
             Connect(btn.MouseEnter, function() Tween(btn, 0.12, { BackgroundColor3 = Library.Theme.Border }) end)
             Connect(btn.MouseLeave, function() Tween(btn, 0.12, { BackgroundColor3 = Library.Theme.Inline }) end)
             Connect(btn.MouseButton1Click, function()
-                if c.Func then task.spawn(c.Func) end
-                if c.Callback then task.spawn(c.Callback) end
+                spawnFn(c.Func)
+                spawnFn(c.Callback)
             end)
             local Button = { Instance = btn, Type = "Button", Id = c.Id, IgnoreConfig = true }
             if c.Id then Library.Options[c.Id] = Button end
             function Button:SetText(t) btn.Text = t return Button end
             function Button:AddButton(a2, b2) return build(normalizeButton(a2, b2)) end
-            return safe(Button, "Button")
+            return Button
         end
         return build(info)
     end
@@ -1163,10 +1151,10 @@ function Library:_BuildSection(container)
             Id = id,
             IgnoreConfig = Library._ignoreConfig,
         }
-        function Toggle:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+        function Toggle:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
         function Toggle:_fire()
-            for _, fn in ipairs(self.Callbacks) do task.spawn(fn, self.Value) end
-            if info.Callback then task.spawn(info.Callback, self.Value) end
+            for _, fn in ipairs(self.Callbacks) do spawnFn(fn, self.Value) end
+            spawnFn(info.Callback, self.Value)
             Library:_UpdateDependencies()
         end
         function Toggle:SetValue(v)
@@ -1186,7 +1174,7 @@ function Library:_BuildSection(container)
         end
         Toggle:SetValue(Toggle.Value)
         Library.Toggles[id] = Toggle
-        return safe(Toggle, "Toggle")
+        return Toggle
     end
 
     function Section:AddSlider(id, info)
@@ -1224,7 +1212,7 @@ function Library:_BuildSection(container)
             Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
             Corner(2, fill)
             local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = sid, IgnoreConfig = Library._ignoreConfig }
-            function Slider:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+            function Slider:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
             local function round(v)
                 if rounding <= 0 then return math.floor(v + 0.5) end
                 local m = 10 ^ rounding
@@ -1237,8 +1225,8 @@ function Library:_BuildSection(container)
                 fill.Size = UDim2.fromScale(alpha, 1)
                 valueLabel.Text = tostring(v) .. (suffix ~= "" and (" " .. suffix) or "")
                 if not skipCb then
-                    for _, fn in ipairs(self.Callbacks) do task.spawn(fn, v) end
-                    if sinfo.Callback then task.spawn(sinfo.Callback, v) end
+                    for _, fn in ipairs(self.Callbacks) do spawnFn(fn, v) end
+                    spawnFn(sinfo.Callback, v)
                 end
                 return self
             end
@@ -1278,7 +1266,7 @@ function Library:_BuildSection(container)
             end)
             Slider:SetValue(default, true)
             Library.Options[sid] = Slider
-            return safe(Slider, "Slider")
+            return Slider
         end
         return buildSlider(id, info)
     end
@@ -1313,12 +1301,12 @@ function Library:_BuildSection(container)
         })
         Library:AddToRegistry(textBox, "TextColor3", "LightText")
         local Input = { Value = info.Default or "", Callbacks = {}, Type = "Input", Id = id, IgnoreConfig = Library._ignoreConfig }
-        function Input:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+        function Input:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
         function Input:SetValue(v)
             textBox.Text = tostring(v)
             Input.Value = textBox.Text
-            for _, fn in ipairs(Input.Callbacks) do task.spawn(fn, Input.Value) end
-            if info.Callback then task.spawn(info.Callback, Input.Value) end
+            for _, fn in ipairs(Input.Callbacks) do spawnFn(fn, Input.Value) end
+            spawnFn(info.Callback, Input.Value)
             return Input
         end
         if info.Numeric then
@@ -1328,8 +1316,8 @@ function Library:_BuildSection(container)
         end
         local function commit()
             Input.Value = textBox.Text
-            for _, fn in ipairs(Input.Callbacks) do task.spawn(fn, Input.Value) end
-            if info.Callback then task.spawn(info.Callback, Input.Value) end
+            for _, fn in ipairs(Input.Callbacks) do spawnFn(fn, Input.Value) end
+            spawnFn(info.Callback, Input.Value)
         end
         if info.Finished then
             Connect(textBox.FocusLost, function(enter) if enter then commit() end end)
@@ -1338,7 +1326,7 @@ function Library:_BuildSection(container)
             Connect(textBox:GetPropertyChangedSignal("Text"), function() Input.Value = textBox.Text end)
         end
         Library.Options[id] = Input
-        return safe(Input, "Input")
+        return Input
     end
 
     function Section:AddDropdown(id, info) return Library:_Dropdown(container, id, info) end
@@ -1386,23 +1374,25 @@ function Library:_BuildSection(container)
         return inner
     end
 
-    return safe(Section, "Section")
+    return Section
 end
 
 function Library:_UpdateDependencies()
     for _, box in ipairs(self.DependencyBoxes) do
-        local show = true
-        for _, dep in ipairs(box._deps or {}) do
-            local control, expected = dep[1], dep[2]
-            if control and control.Value ~= nil then
-                if type(control.Value) == "table" then
-                    if not control.Value[expected] then show = false end
-                else
-                    if control.Value ~= expected then show = false end
+        if box._depBox then
+            local show = true
+            for _, dep in ipairs(box._deps or {}) do
+                local control, expected = dep[1], dep[2]
+                if control and control.Value ~= nil then
+                    if type(control.Value) == "table" then
+                        if not control.Value[expected] then show = false end
+                    else
+                        if control.Value ~= expected then show = false end
+                    end
                 end
             end
+            box._depBox.Visible = show
         end
-        box._depBox.Visible = show
     end
 end
 
@@ -1461,9 +1451,10 @@ function Library:_Dropdown(container, id, info)
     if not multi and type(Dropdown.Value) ~= "string" and type(Dropdown.Value) ~= "number" then
         Dropdown.Value = nil
     end
-    function Dropdown:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+    function Dropdown:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
     local function refreshDisplay()
         if multi then
+            if type(Dropdown.Value) ~= "table" then Dropdown.Value = {} end
             local parts = {}
             for v, on in pairs(Dropdown.Value) do if on then table.insert(parts, v) end end
             table.sort(parts)
@@ -1473,8 +1464,8 @@ function Library:_Dropdown(container, id, info)
         end
     end
     local function fire()
-        for _, fn in ipairs(Dropdown.Callbacks) do task.spawn(fn, Dropdown.Value) end
-        if info.Callback then task.spawn(info.Callback, Dropdown.Value) end
+        for _, fn in ipairs(Dropdown.Callbacks) do spawnFn(fn, Dropdown.Value) end
+        spawnFn(info.Callback, Dropdown.Value)
         Library:_UpdateDependencies()
     end
     local optionButtons = {}
@@ -1483,7 +1474,11 @@ function Library:_Dropdown(container, id, info)
         table.clear(optionButtons)
         for i, v in ipairs(Dropdown.Values) do
             local function selected()
-                if multi then return Dropdown.Value[v] == true else return Dropdown.Value == v end
+                if multi then
+                    return type(Dropdown.Value) == "table" and Dropdown.Value[v] == true
+                else
+                    return Dropdown.Value == v
+                end
             end
             local opt = New("TextButton", {
                 Parent = scroller, BackgroundColor3 = Library.Theme.Accent,
@@ -1495,6 +1490,7 @@ function Library:_Dropdown(container, id, info)
             Corner(4, opt)
             Connect(opt.MouseButton1Click, function()
                 if multi then
+                    if type(Dropdown.Value) ~= "table" then Dropdown.Value = {} end
                     if Dropdown.Value[v] then Dropdown.Value[v] = nil else Dropdown.Value[v] = true end
                 else
                     Dropdown.Value = v
@@ -1515,8 +1511,15 @@ function Library:_Dropdown(container, id, info)
     end
     function Dropdown:SetValues(newValues) self.Values = newValues or {}; rebuild(); refreshDisplay(); return self end
     function Dropdown:SetValue(v)
-        if type(v) == "function" or type(v) == "userdata" or type(v) == "thread" then v = nil end
-        self.Value = v
+        if multi then
+            if type(v) ~= "table" then v = {} end
+            self.Value = v
+        else
+            if type(v) == "function" or type(v) == "userdata" or type(v) == "thread" or type(v) == "table" then
+                v = nil
+            end
+            self.Value = v
+        end
         rebuild()
         refreshDisplay()
         fire()
@@ -1534,7 +1537,7 @@ function Library:_Dropdown(container, id, info)
     rebuild()
     refreshDisplay()
     Library.Options[id] = Dropdown
-    return safe(Dropdown, "Dropdown")
+    return Dropdown
 end
 
 local digitNames = { ["0"] = "Zero", ["1"] = "One", ["2"] = "Two", ["3"] = "Three", ["4"] = "Four",
@@ -1568,14 +1571,14 @@ function Library:_KeyPicker(holder, id, info)
         Callbacks = {}, Type = "KeyPicker", Id = id, Text = info.Text or id,
         IgnoreConfig = Library._ignoreConfig,
     }
-    function KeyPicker:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
-    function KeyPicker:OnClick(fn) self._click = fn return self end
+    function KeyPicker:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
+    function KeyPicker:OnClick(fn) self._click = type(fn) == "function" and fn or nil return self end
     function KeyPicker:GetState() return self.State end
     function KeyPicker:SetValue(key)
         key = normalizeKeybind(key)
         self.Value = key
         btn.Text = key and string.lower(key) or "none"
-        if self._onRebind then task.spawn(self._onRebind, key) end
+        if self._onRebind then spawnFn(self._onRebind, key) end
         Library:_UpdateKeybindList()
         return self
     end
@@ -1636,7 +1639,7 @@ function Library:_KeyPicker(holder, id, info)
         KeyPicker._boundAt = tick()
         captureBox.Visible = false
         pcall(function() captureBox:ReleaseFocus() end)
-        if KeyPicker._onRebind then task.spawn(KeyPicker._onRebind, key) end
+        if KeyPicker._onRebind then spawnFn(KeyPicker._onRebind, key) end
         Library:_UpdateKeybindList()
     end
     local function startListening()
@@ -1688,9 +1691,9 @@ function Library:_KeyPicker(holder, id, info)
             elseif KeyPicker.Mode == "Hold" then KeyPicker.State = true
             elseif KeyPicker.Mode == "Always" then KeyPicker.State = true end
             if info._toggle and info.SyncToggleState then info._toggle:SetValue(KeyPicker.State) end
-            for _, fn in ipairs(KeyPicker.Callbacks) do task.spawn(fn, KeyPicker.State) end
-            if KeyPicker._click then task.spawn(KeyPicker._click) end
-            if info.Callback then task.spawn(info.Callback, KeyPicker.State) end
+            for _, fn in ipairs(KeyPicker.Callbacks) do spawnFn(fn, KeyPicker.State) end
+            spawnFn(KeyPicker._click)
+            spawnFn(info.Callback, KeyPicker.State)
             Library:_UpdateKeybindList()
         end
     end)
@@ -1702,7 +1705,7 @@ function Library:_KeyPicker(holder, id, info)
             if match then
                 KeyPicker.State = false
                 if info._toggle and info.SyncToggleState then info._toggle:SetValue(false) end
-                for _, fn in ipairs(KeyPicker.Callbacks) do task.spawn(fn, false) end
+                for _, fn in ipairs(KeyPicker.Callbacks) do spawnFn(fn, false) end
                 Library:_UpdateKeybindList()
             end
         end
@@ -1712,7 +1715,7 @@ function Library:_KeyPicker(holder, id, info)
     table.insert(Library.KeybindEntries, KeyPicker)
     Library.Options[id] = KeyPicker
     Library:_UpdateKeybindList()
-    return safe(KeyPicker, "KeyPicker")
+    return KeyPicker
 end
 
 function Library:_ColorPicker(holder, id, info)
@@ -1726,7 +1729,7 @@ function Library:_ColorPicker(holder, id, info)
     Corner(8, swatch)
     Library:AddToRegistry(Stroke(swatch, Library.Theme.Border, 1, 0), "Color", "Border")
     local ColorPicker = { Value = color, Transparency = transparency, Callbacks = {}, Type = "ColorPicker", Id = id, IgnoreConfig = Library._ignoreConfig }
-    function ColorPicker:OnChanged(fn) table.insert(self.Callbacks, fn) return self end
+    function ColorPicker:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
     local h, s, v = Color3.toHSV(color)
     local popup = New("Frame", {
         Parent = Library.ScreenGui, Visible = false, BackgroundColor3 = Library.Theme.SectionBackground,
@@ -1787,8 +1790,8 @@ function Library:_ColorPicker(holder, id, info)
     Corner(4, hexBox)
     Stroke(hexBox, Library.Theme.Border, 1, 0)
     local function fire()
-        for _, fn in ipairs(ColorPicker.Callbacks) do task.spawn(fn, ColorPicker.Value, ColorPicker.Transparency) end
-        if info.Callback then task.spawn(info.Callback, ColorPicker.Value, ColorPicker.Transparency) end
+        for _, fn in ipairs(ColorPicker.Callbacks) do spawnFn(fn, ColorPicker.Value, ColorPicker.Transparency) end
+        spawnFn(info.Callback, ColorPicker.Value, ColorPicker.Transparency)
     end
     local function refresh(skipFire)
         local col = Color3.fromHSV(h, s, v)
@@ -1859,7 +1862,7 @@ function Library:_ColorPicker(holder, id, info)
     end)
     refresh(true)
     Library.Options[id] = ColorPicker
-    return safe(ColorPicker, "ColorPicker")
+    return ColorPicker
 end
 
 function Library:CreateKeybindList()
@@ -1959,11 +1962,14 @@ end
 function Library:ApplyConfigData(data)
     if not data then return end
     for id, val in pairs(data.toggles or {}) do
-        if self.Toggles[id] then pcall(function() self.Toggles[id]:SetValue(val) end) end
+        local toggle = self.Toggles[id]
+        if toggle and type(toggle.SetValue) == "function" then
+            pcall(function() toggle:SetValue(val) end)
+        end
     end
     for id, ser in pairs(data.options or {}) do
         local opt = self.Options[id]
-        if opt then
+        if opt and type(opt.SetValue) == "function" then
             pcall(function()
                 if ser.__t == "color" then
                     opt:SetValue(Color3.fromHex(ser.hex), ser.transparency)
