@@ -1,7 +1,7 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/kfclover67/lib/main/library.lua"))()
 
 local Window = Library:CreateWindow({
-    Title     = "tsunami",
+    Title     = "test-lib",
     TitleIcon = 0,
     Size      = UDim2.fromOffset(720, 540),
     Center    = true,
