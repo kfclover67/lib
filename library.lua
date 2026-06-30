@@ -214,7 +214,7 @@ local function formatImage(icon)
 end
 
 local function formatDisplayValue(val)
-    if val == nil then return "..."
+    if val == nil then return "..." end
     local t = type(val)
     if t == "string" then return val == "" and "..." or val
     elseif t == "number" or t == "boolean" then return tostring(val)
