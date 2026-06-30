@@ -189,6 +189,28 @@ local function Connect(signal, fn)
     return c
 end
 
+local safeStub
+local function safe(tbl, label)
+    if getmetatable(tbl) then return tbl end
+    return setmetatable(tbl, {
+        __index = function(_, key)
+            warn("[star] " .. label .. " has no method '" .. tostring(key) .. "' — skipped")
+            return function()
+                return safeStub
+            end
+        end,
+    })
+end
+safeStub = safe({}, "stub")
+
+local function formatImage(icon)
+    if icon == nil or icon == "" then return nil end
+    if type(icon) == "number" then return "rbxassetid://" .. icon end
+    local s = tostring(icon)
+    if s:find("rbxasset") then return s end
+    return "rbxassetid://" .. s
+end
+
 local function Tween(obj, time, props)
     local t = TweenService:Create(obj, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
     t:Play()
@@ -467,13 +489,14 @@ function Library:CreateWindow(cfg)
         Name = "Title",
         Parent = sidebar,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(20, 24),
-        Size = UDim2.new(1, -40, 0, 30),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 24),
+        Size = UDim2.new(1, -16, 0, 30),
         Font = Library.FontBold,
         Text = title,
         TextSize = 23,
         TextColor3 = Library.Theme.TitleColor,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        TextXAlignment = Enum.TextXAlignment.Center,
     })
     Library:AddToRegistry(titleLabel, "TextColor3", "TitleColor")
 
@@ -567,13 +590,14 @@ function Library:CreateWindow(cfg)
         Library:AddToRegistry(tabButton, "BackgroundColor3", "SectionBackground")
 
         local iconObj
-        if icon then
+        local imageId = formatImage(icon)
+        if imageId then
             iconObj = New("ImageLabel", {
                 Parent = tabButton,
                 BackgroundTransparency = 1,
                 Position = UDim2.fromOffset(12, 9),
                 Size = UDim2.fromOffset(16, 16),
-                Image = tostring(icon),
+                Image = imageId,
                 ImageColor3 = Library.Theme.DarkText,
             })
         else
@@ -735,7 +759,7 @@ function Library:CreateWindow(cfg)
 
         table.insert(Window.Tabs, Tab)
         if #Window.Tabs == 1 then select() end
-        return Tab
+        return safe(Tab, "Tab")
     end
 
     function Window:Toggle()
@@ -746,7 +770,7 @@ function Library:CreateWindow(cfg)
 
     Library.Window = Window
     Library:_InitGlobals(main, mobile)
-    return Window
+    return safe(Window, "Window")
 end
 
 function Library:_InitGlobals(main, mobile)
@@ -919,7 +943,7 @@ function Library:_BuildSection(container)
         function Label:SetText(t) label.Text = t return Label end
         function Label:AddColorPicker(id, info) return Library:_ColorPicker(holder, id, info) end
         function Label:AddKeyPicker(id, info)   return Library:_KeyPicker(holder, id, info) end
-        return Label
+        return safe(Label, "Label")
     end
 
     local function normalizeButton(a, b)
@@ -982,7 +1006,7 @@ function Library:_BuildSection(container)
             if c.Id then Library.Options[c.Id] = Button end
             function Button:SetText(t) btn.Text = t return Button end
             function Button:AddButton(a2, b2) return build(normalizeButton(a2, b2)) end
-            return Button
+            return safe(Button, "Button")
         end
         return build(info)
     end
@@ -1054,7 +1078,7 @@ function Library:_BuildSection(container)
         end
         Toggle:SetValue(Toggle.Value)
         Library.Toggles[id] = Toggle
-        return Toggle
+        return safe(Toggle, "Toggle")
     end
 
     function Section:AddSlider(id, info)
@@ -1135,7 +1159,7 @@ function Library:_BuildSection(container)
         end)
         Slider:SetValue(default, true)
         Library.Options[id] = Slider
-        return Slider
+        return safe(Slider, "Slider")
     end
 
     function Section:AddInput(id, info)
@@ -1193,7 +1217,7 @@ function Library:_BuildSection(container)
             Connect(textBox:GetPropertyChangedSignal("Text"), function() Input.Value = textBox.Text end)
         end
         Library.Options[id] = Input
-        return Input
+        return safe(Input, "Input")
     end
 
     function Section:AddDropdown(id, info) return Library:_Dropdown(container, id, info) end
@@ -1241,7 +1265,7 @@ function Library:_BuildSection(container)
         return inner
     end
 
-    return Section
+    return safe(Section, "Section")
 end
 
 function Library:_UpdateDependencies()
@@ -1386,7 +1410,7 @@ function Library:_Dropdown(container, id, info)
     rebuild()
     refreshDisplay()
     Library.Options[id] = Dropdown
-    return Dropdown
+    return safe(Dropdown, "Dropdown")
 end
 
 local digitNames = { ["0"] = "Zero", ["1"] = "One", ["2"] = "Two", ["3"] = "Three", ["4"] = "Four",
@@ -1563,7 +1587,7 @@ function Library:_KeyPicker(holder, id, info)
     table.insert(Library.KeybindEntries, KeyPicker)
     Library.Options[id] = KeyPicker
     Library:_UpdateKeybindList()
-    return KeyPicker
+    return safe(KeyPicker, "KeyPicker")
 end
 
 function Library:_ColorPicker(holder, id, info)
@@ -1710,7 +1734,7 @@ function Library:_ColorPicker(holder, id, info)
     end)
     refresh(true)
     Library.Options[id] = ColorPicker
-    return ColorPicker
+    return safe(ColorPicker, "ColorPicker")
 end
 
 function Library:CreateKeybindList()
@@ -2135,5 +2159,16 @@ function Library:Unload()
     table.clear(self.Connections)
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
+
+setmetatable(Library, {
+    __index = function(t, k)
+        local v = rawget(t, k)
+        if v ~= nil then return v end
+        warn("[star] Library has no method '" .. tostring(k) .. "' — skipped")
+        return function()
+            return safeStub
+        end
+    end,
+})
 
 return Library
