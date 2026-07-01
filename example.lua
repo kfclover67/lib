@@ -1,20 +1,21 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/kfclover67/lib/main/library.lua"))()
 
 local Window = Library:CreateWindow({
-    Title     = "test-lib",
-    TitleIcon = 0,
-    Size      = UDim2.fromOffset(720, 540),
-    Center    = true,
+    Title  = "test",
+	TitleIcon = 10734934585,
+    Size   = UDim2.fromOffset(720, 540),
+    Center = true,
 })
 
 local Tabs = {
-    Test     = Window:AddTab("test"),
-    Settings = Window:AddTab("settings"),
+    Main     = Window:AddTab("main", 10709811939),
+    Settings = Window:AddTab("settings", "rbxassetid://10734950309"),
 }
 
-local components = Tabs.Test:AddLeftGroupbox("components", "every ui element")
+local components = Tabs.Main:AddLeftGroupbox("components", "every ui element")
 
 components:AddLabel("plain label")
+components:AddDivider()
 components:AddLabel("wrapped label that can span multiple lines if you need it", true)
 
 local mainToggle = components:AddToggle("main_toggle", {
@@ -99,7 +100,7 @@ btn:AddButton("action_btn2", {
     end,
 })
 
-local deps = Tabs.Test:AddRightGroupbox("dependencies", "show / hide based on other controls")
+local deps = Tabs.Main:AddRightGroupbox("dependencies", "show / hide based on other controls")
 
 deps:AddLabel("toggle dependency")
 local enableDep = deps:AddToggle("enable_dep", { Text = "enable section", Default = false })
@@ -145,4 +146,3 @@ Library:CreateWatermark()
 Library:CreateKeybindList()
 Library:SetMenuKeybind(Enum.KeyCode.RightShift)
 Library:LoadAutoload()
-
