@@ -161,26 +161,18 @@ local function New(class, props, children)
     return inst
 end
 
-local function Corner(radius, parent, clip)
-    if parent and parent:IsA("GuiObject") then
-        parent.BorderSizePixel = 0
-        if clip ~= false then
-            parent.ClipsDescendants = true
-        end
-    end
-    return New("UICorner", { CornerRadius = UDim.new(0, radius or 6), Parent = parent })
+local function Corner(radius, parent)
+    return New("UICorner", { CornerRadius = UDim.new(0, radius or 4), Parent = parent })
 end
 
 local function Stroke(parent, color, thickness, transparency)
-    local stroke = New("UIStroke", {
+    return New("UIStroke", {
         Color = color or Library.Theme.Border,
         Thickness = thickness or 1,
         Transparency = transparency or 0,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
         Parent = parent,
     })
-    pcall(function() stroke.LineJoinMode = Enum.LineJoinMode.Round end)
-    return stroke
 end
 
 local function Padding(parent, all, left, right, top, bottom)
@@ -415,13 +407,12 @@ function Library:Notify(text, duration)
         ClipsDescendants = true,
     })
     self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
-    Corner(6, frame)
+    Corner(5, frame)
     self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
-    local accent = New("Frame", {
-        Parent = frame, Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0,
+    New("Frame", {
+        Parent = frame, Size = UDim2.new(0, 2, 1, 0), BorderSizePixel = 0,
         BackgroundColor3 = self.Theme.Accent,
     })
-    Corner(6, accent)
     local lbl = New("TextLabel", {
         Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0),
         Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
@@ -519,7 +510,7 @@ function Library:CreateWindow(cfg)
         ClipsDescendants = true,
     })
     Library:AddToRegistry(main, "BackgroundColor3", "DarkBackground")
-    Corner(8, main)
+    Corner(6, main)
     Stroke(main, Color3.fromRGB(0, 0, 0), 1, 0.3)
     Library.MainFrame = main
 
@@ -687,7 +678,7 @@ function Library:CreateWindow(cfg)
             AutoButtonColor = false,
             Text = "",
         })
-        Corner(6, tabButton)
+        Corner(5, tabButton)
         Library:AddToRegistry(tabButton, "BackgroundColor3", "SectionBackground")
 
         local iconObj
@@ -807,7 +798,7 @@ function Library:CreateWindow(cfg)
                 AutomaticSize = Enum.AutomaticSize.Y,
             })
             Library:AddToRegistry(section, "BackgroundColor3", "SectionBackground")
-            Corner(6, section)
+            Corner(5, section)
             Library:AddToRegistry(Stroke(section, Library.Theme.Border, 1, 0), "Color", "Border")
             Padding(section, 12)
 
@@ -931,7 +922,6 @@ function Library:_CreateMobileButton(main)
         ZIndex = 200,
     })
     Corner(23, btn)
-    btn.ClipsDescendants = true
     self:AddToRegistry(btn, "BackgroundColor3", "SectionBackground")
     self:AddToRegistry(Stroke(btn, self.Theme.Accent, 1, 0), "Color", "Accent")
 
@@ -979,12 +969,11 @@ function Library:CreateWatermark(text)
         ZIndex = 150,
     })
     self:AddToRegistry(wm, "BackgroundColor3", "SectionBackground")
-    Corner(6, wm)
+    Corner(5, wm)
     self:AddToRegistry(Stroke(wm, self.Theme.Border, 1, 0), "Color", "Border")
-    local wmAccent = New("Frame", { Parent = wm, Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0,
+    New("Frame", { Parent = wm, Size = UDim2.new(0, 2, 1, 0), BorderSizePixel = 0,
         BackgroundColor3 = self.Theme.Accent, ZIndex = 151 })
-    Corner(6, wmAccent)
-    self:AddToRegistry(wmAccent, "BackgroundColor3", "Accent")
+    self:AddToRegistry(wm:FindFirstChildOfClass("Frame"), "BackgroundColor3", "Accent")
     local lbl = New("TextLabel", {
         Parent = wm, BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0),
         Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
@@ -1049,6 +1038,25 @@ function Library:_BuildSection(container)
         return Label
     end
 
+    function Section:AddDivider()
+        local row = New("Frame", {
+            Parent = container,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 10),
+        })
+        local line = New("Frame", {
+            Parent = row,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.new(1, 0, 0, 2),
+            BackgroundColor3 = Library.Theme.Border,
+            BorderSizePixel = 0,
+        })
+        Library:AddToRegistry(line, "BackgroundColor3", "Border")
+        New("UICorner", { Parent = line, CornerRadius = UDim.new(1, 0) })
+        return { Instance = line, Row = row }
+    end
+
     local function normalizeButton(a, b)
         if type(a) == "string" and type(b) == "table" then
             b.Id = b.Id or a
@@ -1099,7 +1107,7 @@ function Library:_BuildSection(container)
             })
             Library:AddToRegistry(btn, "BackgroundColor3", "Inline")
             Library:AddToRegistry(btn, "TextColor3", "Text")
-            Corner(6, btn)
+            Corner(5, btn)
             Library:AddToRegistry(Stroke(btn, Library.Theme.Border, 1, 0), "Color", "Border")
             table.insert(buttons, btn)
             resize()
@@ -1142,7 +1150,7 @@ function Library:_BuildSection(container)
             Size = UDim2.fromOffset(16, 16),
         })
         Library:AddToRegistry(box, "BackgroundColor3", "Inline")
-        Corner(5, box)
+        Corner(4, box)
         local boxStroke = Stroke(box, Library.Theme.Border, 1, 0)
         local fill = New("Frame", {
             Parent = box,
@@ -1152,6 +1160,7 @@ function Library:_BuildSection(container)
             BorderSizePixel = 0,
         })
         Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
+        Corner(4, fill)
         local Toggle = {
             Value = info.Default or false,
             Callbacks = {},
@@ -1195,7 +1204,7 @@ function Library:_BuildSection(container)
             local rounding = sinfo.Rounding or 0
             local suffix   = sinfo.Suffix or ""
             local default  = math.clamp(sinfo.Default or min, min, max)
-            local row = makeRow(container, 36)
+            local row = makeRow(container, 34)
             local label = New("TextLabel", {
                 Parent = row, BackgroundTransparency = 1, Size = UDim2.new(1, -90, 0, 16),
                 Font = Library.Font, Text = sinfo.Text or sid, TextSize = 14,
@@ -1210,16 +1219,17 @@ function Library:_BuildSection(container)
             })
             Library:AddToRegistry(valueLabel, "TextColor3", "DarkText")
             local track = New("Frame", {
-                Parent = row, Position = UDim2.new(0, 0, 1, -10), Size = UDim2.new(1, 0, 0, 6),
+                Parent = row, Position = UDim2.new(0, 0, 1, -8), Size = UDim2.new(1, 0, 0, 4),
                 BackgroundColor3 = Library.Theme.Inline, BorderSizePixel = 0,
             })
             Library:AddToRegistry(track, "BackgroundColor3", "Inline")
-            Corner(3, track)
+            Corner(2, track)
             Library:AddToRegistry(Stroke(track, Library.Theme.Border, 1, 0), "Color", "Border")
             local fill = New("Frame", {
                 Parent = track, Size = UDim2.fromScale(0, 1), BackgroundColor3 = Library.Theme.Accent, BorderSizePixel = 0,
             })
             Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
+            Corner(2, fill)
             local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = sid, IgnoreConfig = Library._ignoreConfig }
             function Slider:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
             local function round(v)
@@ -1298,7 +1308,7 @@ function Library:_BuildSection(container)
             BackgroundColor3 = Library.Theme.Inline, BorderSizePixel = 0,
         })
         Library:AddToRegistry(boxFrame, "BackgroundColor3", "Inline")
-        Corner(6, boxFrame)
+        Corner(5, boxFrame)
         Library:AddToRegistry(Stroke(boxFrame, Library.Theme.Border, 1, 0), "Color", "Border")
         Padding(boxFrame, nil, 8, 8, 0, 0)
         local textBox = New("TextBox", {
@@ -1425,7 +1435,7 @@ function Library:_Dropdown(container, id, info)
         BackgroundColor3 = Library.Theme.Inline, AutoButtonColor = false, Text = "",
     })
     Library:AddToRegistry(boxBtn, "BackgroundColor3", "Inline")
-    Corner(6, boxBtn)
+    Corner(5, boxBtn)
     Library:AddToRegistry(Stroke(boxBtn, Library.Theme.Border, 1, 0), "Color", "Border")
     Padding(boxBtn, nil, 8, 8, 0, 0)
     local display = New("TextLabel", {
@@ -1444,13 +1454,13 @@ function Library:_Dropdown(container, id, info)
         BorderSizePixel = 0, Visible = false, ZIndex = 50, Size = UDim2.fromOffset(120, 0),
     })
     Library:AddToRegistry(popup, "BackgroundColor3", "SectionBackground")
-    Corner(6, popup)
+    Corner(5, popup)
     Library:AddToRegistry(Stroke(popup, Library.Theme.Border, 1, 0), "Color", "Border")
     local scroller = New("ScrollingFrame", {
         Parent = popup, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4),
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollBarThickness = 2, ZIndex = 51, ClipsDescendants = true,
+        ScrollBarThickness = 2, ZIndex = 51,
     })
     New("UIListLayout", { Parent = scroller, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
     local Dropdown = { Value = multi and {} or nil, Values = values, Callbacks = {}, Type = "Dropdown", Id = id, IgnoreConfig = Library._ignoreConfig }
@@ -1496,7 +1506,7 @@ function Library:_Dropdown(container, id, info)
                 TextSize = 14, TextColor3 = selected() and Color3.fromRGB(255, 255, 255) or Library.Theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 52, LayoutOrder = i,
             })
-            Corner(5, opt)
+            Corner(4, opt)
             Connect(opt.MouseButton1Click, function()
                 if multi then
                     if type(Dropdown.Value) ~= "table" then Dropdown.Value = {} end
@@ -1572,7 +1582,7 @@ function Library:_KeyPicker(holder, id, info)
         AutomaticSize = Enum.AutomaticSize.X,
     })
     Library:AddToRegistry(btn, "BackgroundColor3", "Inline")
-    Corner(5, btn)
+    Corner(4, btn)
     Library:AddToRegistry(Stroke(btn, Library.Theme.Border, 1, 0), "Color", "Border")
     Padding(btn, nil, 6, 6, 0, 0)
     local KeyPicker = {
@@ -1598,7 +1608,7 @@ function Library:_KeyPicker(holder, id, info)
             BorderSizePixel = 0, ZIndex = 70, Size = UDim2.fromOffset(90, 0), AutomaticSize = Enum.AutomaticSize.Y,
         })
         Library:AddToRegistry(modePopup, "BackgroundColor3", "SectionBackground")
-        Corner(6, modePopup)
+        Corner(5, modePopup)
         Library:AddToRegistry(Stroke(modePopup, Library.Theme.Border, 1, 0), "Color", "Border")
         Padding(modePopup, 4)
         New("UIListLayout", { Parent = modePopup, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
@@ -1609,7 +1619,7 @@ function Library:_KeyPicker(holder, id, info)
                 Text = "  " .. m[1], TextSize = 13, TextColor3 = Library.Theme.Text,
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 71, LayoutOrder = i,
             })
-            Corner(5, opt)
+            Corner(4, opt)
             Connect(opt.MouseButton1Click, function()
                 KeyPicker.Mode = m[2]
                 Library:ClosePopup(modePopup)
@@ -1745,27 +1755,29 @@ function Library:_ColorPicker(holder, id, info)
         BorderSizePixel = 0, Size = UDim2.fromOffset(200, info.Transparency ~= nil and 224 or 206), ZIndex = 60,
     })
     Library:AddToRegistry(popup, "BackgroundColor3", "SectionBackground")
-    Corner(6, popup)
+    Corner(5, popup)
     Library:AddToRegistry(Stroke(popup, Library.Theme.Border, 1, 0), "Color", "Border")
     Padding(popup, 10)
     local svBox = New("ImageButton", {
         Parent = popup, Size = UDim2.new(1, 0, 0, 120), BackgroundColor3 = Color3.fromHSV(h, 1, 1),
-        AutoButtonColor = false, ZIndex = 61, BorderSizePixel = 0,
+        AutoButtonColor = false, ZIndex = 61,
     })
-    Corner(6, svBox)
+    Corner(4, svBox)
     local whiteGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 61 })
+    Corner(4, whiteGrad)
     New("UIGradient", { Parent = whiteGrad, Color = ColorSequence.new(Color3.new(1,1,1)),
         Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
     local blackGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0,0,0), BorderSizePixel = 0, ZIndex = 62 })
+    Corner(4, blackGrad)
     New("UIGradient", { Parent = blackGrad, Rotation = 90, Color = ColorSequence.new(Color3.new(0,0,0)),
         Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) })
-    local svCursor = New("Frame", { Parent = svBox, Size = UDim2.fromOffset(10, 10), AnchorPoint = Vector2.new(0.5, 0.5),
+    local svCursor = New("Frame", { Parent = svBox, Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 63 })
-    Corner(5, svCursor)
+    Corner(4, svCursor)
     Stroke(svCursor, Color3.new(0,0,0), 1, 0)
     local hueBar = New("ImageButton", { Parent = popup, Position = UDim2.new(0, 0, 0, 130), Size = UDim2.new(1, 0, 0, 14),
-        AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61, BorderSizePixel = 0 })
-    Corner(6, hueBar)
+        AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61 })
+    Corner(4, hueBar)
     New("UIGradient", { Parent = hueBar, Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255,0,0)),
         ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255,255,0)),
@@ -1775,20 +1787,18 @@ function Library:_ColorPicker(holder, id, info)
         ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255,0,255)),
         ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255,0,0)),
     }) })
-    local hueCursor = New("Frame", { Parent = hueBar, Size = UDim2.new(0, 4, 1, 4), AnchorPoint = Vector2.new(0.5, 0.5),
+    local hueCursor = New("Frame", { Parent = hueBar, Size = UDim2.new(0, 3, 1, 2), AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 62 })
-    Corner(2, hueCursor)
     Stroke(hueCursor, Color3.new(0,0,0), 1, 0)
     local alphaBar, alphaCursor, alphaGrad
     if info.Transparency ~= nil then
         alphaBar = New("ImageButton", { Parent = popup, Position = UDim2.new(0, 0, 0, 150), Size = UDim2.new(1, 0, 0, 14),
-            AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61, BorderSizePixel = 0 })
-        Corner(6, alphaBar)
+            AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61 })
+        Corner(4, alphaBar)
         alphaGrad = New("UIGradient", { Parent = alphaBar, Color = ColorSequence.new(color),
             Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
-        alphaCursor = New("Frame", { Parent = alphaBar, Size = UDim2.new(0, 4, 1, 4), AnchorPoint = Vector2.new(0.5, 0.5),
+        alphaCursor = New("Frame", { Parent = alphaBar, Size = UDim2.new(0, 3, 1, 2), AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.fromScale(1 - transparency, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 62 })
-        Corner(2, alphaCursor)
         Stroke(alphaCursor, Color3.new(0,0,0), 1, 0)
     end
     local hexBox = New("TextBox", { Parent = popup, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
@@ -1796,7 +1806,7 @@ function Library:_ColorPicker(holder, id, info)
         Font = Library.Font, TextSize = 14, TextColor3 = Library.Theme.LightText, Text = "#ffffff",
         ClearTextOnFocus = false, ZIndex = 61 })
     Library:AddToRegistry(hexBox, "BackgroundColor3", "Inline")
-    Corner(6, hexBox)
+    Corner(4, hexBox)
     Stroke(hexBox, Library.Theme.Border, 1, 0)
     local function fire()
         for _, fn in ipairs(ColorPicker.Callbacks) do spawnFn(fn, ColorPicker.Value, ColorPicker.Transparency) end
@@ -1882,7 +1892,7 @@ function Library:CreateKeybindList()
         BorderSizePixel = 0, ZIndex = 140, AutomaticSize = Enum.AutomaticSize.Y,
     })
     self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
-    Corner(6, frame)
+    Corner(5, frame)
     self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
     Padding(frame, 8)
     New("UIListLayout", { Parent = frame, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
