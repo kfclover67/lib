@@ -33,6 +33,37 @@ local httpGet = function(url)
     return nil
 end
 
+local function cleanFileName(name)
+    return tostring(name):gsub("[^%w%._%-]", "_")
+end
+
+local function looksLikeFontData(data)
+    if type(data) ~= "string" or #data < 128 then
+        return false
+    end
+
+    local head = data:sub(1, 256):lower()
+    if head:find("<!doctype", 1, true) or head:find("<html", 1, true) or head:find("not found", 1, true) then
+        return false
+    end
+
+    local magic = data:sub(1, 4)
+    return magic == "\0\1\0\0"
+        or magic == "OTTO"
+        or magic == "true"
+        or magic == "ttcf"
+        or magic == "wOFF"
+        or magic == "wOF2"
+end
+
+local function ensureFontFolders()
+    if not (fs.makefolder and fs.isfolder) then return end
+    pcall(function()
+        if not fs.isfolder("star") then fs.makefolder("star") end
+        if not fs.isfolder("star/fonts") then fs.makefolder("star/fonts") end
+    end)
+end
+
 local function hasFS()
     return fs.writefile and fs.readfile and fs.isfile and fs.listfiles and fs.makefolder and true or false
 end
@@ -336,35 +367,105 @@ function Library:_BoldVariant(enum)
 end
 
 function Library:DownloadFont(name, link)
-    if not (fs.writefile and fs.isfile and getCustomAsset) then return nil end
-    pcall(function()
-        if fs.makefolder and not (fs.isfolder and fs.isfolder("star/fonts")) then
-            fs.makefolder("star")
-            fs.makefolder("star/fonts")
+    if not (fs.writefile and fs.readfile and fs.isfile and getCustomAsset and link) then return nil end
+
+    ensureFontFolders()
+
+    local safeName = cleanFileName(name)
+    local fontPath = "star/fonts/" .. safeName .. ".ttf"
+    local familyPath = "star/fonts/" .. safeName .. ".font"
+
+    local data
+    if fs.isfile(fontPath) then
+        local ok, cached = pcall(fs.readfile, fontPath)
+        if ok and looksLikeFontData(cached) then
+            data = cached
+        else
+            pcall(function()
+                if fs.delfile then fs.delfile(fontPath) end
+            end)
         end
-    end)
-    local path = "star/fonts/" .. name .. ".ttf"
-    if not fs.isfile(path) then
-        local data = httpGet(link)
-        if not data then return nil end
-        local ok = pcall(fs.writefile, path, data)
+    end
+
+    if not data then
+        data = httpGet(link)
+        if not looksLikeFontData(data) then return nil end
+
+        local ok = pcall(fs.writefile, fontPath, data)
         if not ok then return nil end
     end
-    local ok, asset = pcall(getCustomAsset, path)
-    if ok and asset then
+
+    local okTtf, ttfAsset = pcall(getCustomAsset, fontPath)
+    if not okTtf or not ttfAsset then return nil end
+
+    local family = {
+        name = tostring(name),
+        faces = {
+            {
+                name = "Regular",
+                weight = 400,
+                style = "Normal",
+                assetId = ttfAsset,
+            },
+            {
+                name = "Medium",
+                weight = 500,
+                style = "Normal",
+                assetId = ttfAsset,
+            },
+            {
+                name = "Bold",
+                weight = 700,
+                style = "Normal",
+                assetId = ttfAsset,
+            },
+        },
+    }
+
+    local encoded = HttpService:JSONEncode(family)
+    local needsWrite = true
+    if fs.isfile(familyPath) then
+        local ok, cached = pcall(fs.readfile, familyPath)
+        needsWrite = not ok or cached ~= encoded
+    end
+
+    if needsWrite then
+        local ok = pcall(fs.writefile, familyPath, encoded)
+        if not ok then return nil end
+    end
+
+    local okAsset, asset = pcall(getCustomAsset, familyPath)
+    if okAsset and asset then
         self.CustomFontAssets[name] = asset
         return asset
     end
+
     return nil
 end
 
 function Library:SetFont(spec)
+    if spec and spec.custom and not self.CustomFontAssets[spec.custom] then
+        local info = self.FontsToDownload[spec.custom]
+        if info and info.Link then
+            self:DownloadFont(spec.custom, info.Link)
+        end
+    end
+
     self.CurrentFontSpec = spec
     for _, e in ipairs(self.FontRegistry) do
         if e.Obj.Parent then
             applyFontToObject(e.Obj, e.Role)
         end
     end
+end
+
+function Library:DownloadAllFonts()
+    for name, info in pairs(self.FontsToDownload) do
+        if info and info.Link then
+            self:DownloadFont(name, info.Link)
+        end
+    end
+    return self.CustomFontAssets
 end
 
 local function within(pos, obj)
@@ -2329,5 +2430,9 @@ function Library:Unload()
     table.clear(self.Connections)
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
+
+task.spawn(function()
+    Library:DownloadAllFonts()
+end)
 
 return Library
