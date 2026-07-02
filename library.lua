@@ -944,6 +944,145 @@ function Library:CreateWindow(cfg)
             return Library:_BuildSection(section)
         end
 
+        local function makeTabbox(parentColumn)
+            local box = New("Frame", {
+                Parent = parentColumn,
+                BackgroundColor3 = Library.Theme.SectionBackground,
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            })
+            Library:AddToRegistry(box, "BackgroundColor3", "SectionBackground")
+            Corner(5, box)
+            Library:AddToRegistry(Stroke(box, Library.Theme.Border, 1, 0), "Color", "Border")
+            Padding(box, 12)
+
+            New("UIListLayout", {
+                Parent = box,
+                Padding = UDim.new(0, 8),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            })
+
+            local tabButtons = New("Frame", {
+                Parent = box,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 26),
+                LayoutOrder = 0,
+            })
+            New("UIListLayout", {
+                Parent = tabButtons,
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 6),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            })
+
+            local contentHolder = New("Frame", {
+                Parent = box,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                LayoutOrder = 1,
+            })
+
+            local Tabbox = { Tabs = {}, _current = nil }
+
+            local function selectTab(tab)
+                Tabbox._current = tab
+                for _, t in ipairs(Tabbox.Tabs) do
+                    t.Page.Visible = false
+                    t.Button.BackgroundColor3 = Library.Theme.Inline
+                    t._label.TextColor3 = Library.Theme.DarkText
+                    if t._stroke then
+                        t._stroke.Color = Library.Theme.Border
+                    end
+                end
+                tab.Page.Visible = true
+                tab.Button.BackgroundColor3 = Library.Theme.Inline
+                tab._label.TextColor3 = Library.Theme.Accent
+                if tab._stroke then
+                    tab._stroke.Color = Library.Theme.Accent
+                end
+            end
+
+            function Tabbox:AddTab(name)
+                local tabBtn = New("TextButton", {
+                    Parent = tabButtons,
+                    AutoButtonColor = false,
+                    Text = "",
+                    BackgroundColor3 = Library.Theme.Inline,
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                })
+                Library:AddToRegistry(tabBtn, "BackgroundColor3", "Inline")
+                Corner(4, tabBtn)
+                local tabStroke = Stroke(tabBtn, Library.Theme.Border, 1, 0)
+                Library:AddToRegistry(tabStroke, "Color", "Border")
+                Padding(tabBtn, nil, 10, 10, 0, 0)
+
+                local tabLabel = New("TextLabel", {
+                    Parent = tabBtn,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0, 0, 1, 0),
+                    AutomaticSize = Enum.AutomaticSize.X,
+                    Font = Library.Font,
+                    Text = name or "tab",
+                    TextSize = 13,
+                    TextColor3 = Library.Theme.DarkText,
+                })
+                Library:AddToRegistry(tabLabel, "TextColor3", "DarkText")
+
+                local page = New("Frame", {
+                    Parent = contentHolder,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    Visible = false,
+                })
+                New("UIListLayout", {
+                    Parent = page,
+                    Padding = UDim.new(0, 8),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                })
+
+                local tab = {
+                    Name = name,
+                    Page = page,
+                    Button = tabBtn,
+                    _label = tabLabel,
+                    _stroke = tabStroke,
+                }
+
+                Connect(tabBtn.MouseButton1Click, function()
+                    selectTab(tab)
+                end)
+                Connect(tabBtn.MouseEnter, function()
+                    if Tabbox._current ~= tab then
+                        tabLabel.TextColor3 = Library.Theme.Text
+                    end
+                end)
+                Connect(tabBtn.MouseLeave, function()
+                    if Tabbox._current ~= tab then
+                        tabLabel.TextColor3 = Library.Theme.DarkText
+                    end
+                end)
+
+                table.insert(Tabbox.Tabs, tab)
+                if #Tabbox.Tabs == 1 then
+                    selectTab(tab)
+                end
+
+                return Library:_BuildSection(page)
+            end
+
+            return Tabbox
+        end
+
+        function Tab:AddLeftTabbox()  return makeTabbox(left) end
+        function Tab:AddRightTabbox() return makeTabbox(right) end
+        Tab.AddTabbox = function(_, side)
+            return makeTabbox(side == "right" and right or left)
+        end
+
         function Tab:AddLeftGroupbox(t, sub)  return makeSection(left, t, sub) end
         function Tab:AddRightGroupbox(t, sub) return makeSection(right, t, sub) end
         Tab.AddSection = function(_, t, side, sub)
