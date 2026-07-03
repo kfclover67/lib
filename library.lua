@@ -73,6 +73,7 @@ local Library = {
     Options      = {},
     Connections  = {},
     ActivePopups = {},
+    TooltipTargets = {},
     Registry     = {},
     FontRegistry = {},
     CustomFontAssets = {},
@@ -522,17 +523,37 @@ function Library:_EnsureTooltip()
         return self.Tooltip
     end
 
-    if not self.ScreenGui then
-        return nil
+    if not self.TooltipGui or not self.TooltipGui.Parent then
+        local gui = New("ScreenGui", {
+            Name = "star_tooltips",
+            ResetOnSpawn = false,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            IgnoreGuiInset = true,
+            DisplayOrder = 100000,
+        })
+        local ok = pcall(function()
+            if gethui then
+                gui.Parent = gethui()
+            elseif syn and syn.protect_gui then
+                syn.protect_gui(gui)
+                gui.Parent = game:GetService("CoreGui")
+            else
+                gui.Parent = game:GetService("CoreGui")
+            end
+        end)
+        if not ok then
+            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+        self.TooltipGui = gui
     end
 
     local frame = New("Frame", {
         Name = "Tooltip",
-        Parent = self.ScreenGui,
+        Parent = self.TooltipGui,
         BackgroundColor3 = self.Theme.SectionBackground,
         BorderSizePixel = 0,
         Visible = false,
-        ZIndex = 200,
+        ZIndex = 2,
         AutomaticSize = Enum.AutomaticSize.Y,
         Size = UDim2.fromOffset(220, 0),
     })
@@ -562,69 +583,73 @@ function Library:_EnsureTooltip()
     return frame
 end
 
-function Library:_ShowTooltip(text)
-    if not text or text == "" then
+function Library:_HideTooltip()
+    if self.Tooltip then
+        self.Tooltip.Visible = false
+    end
+    self._activeTooltipText = nil
+end
+
+function Library:_StartTooltipPolling()
+    if self.TooltipPolling then
         return
     end
+    self.TooltipPolling = true
 
-    local tip = self:_EnsureTooltip()
-    if not tip then
-        return
-    end
+    Connect(RunService.Heartbeat, function()
+        if self.Open == false or #self.TooltipTargets == 0 then
+            self:_HideTooltip()
+            return
+        end
 
-    self.TooltipLabel.Text = text
-    tip.Visible = true
-    self:_PositionTooltip(UserInputService:GetMouseLocation())
+        local pos = UserInputService:GetMouseLocation()
+        local text
 
-    if self.TooltipTrack then
-        self.TooltipTrack:Disconnect()
-        self.TooltipTrack = nil
-    end
+        for _, entry in ipairs(self.TooltipTargets) do
+            for _, obj in ipairs(entry.objects) do
+                if obj and obj.Parent and within(pos, obj) then
+                    text = entry.text
+                    break
+                end
+            end
+            if text then
+                break
+            end
+        end
 
-    self.TooltipTrack = Connect(RunService.RenderStepped, function()
-        if tip.Visible then
-            self:_PositionTooltip(UserInputService:GetMouseLocation())
+        if text then
+            local tip = self:_EnsureTooltip()
+            if tip then
+                if self.TooltipLabel.Text ~= text then
+                    self.TooltipLabel.Text = text
+                end
+                tip.Visible = true
+                self:_PositionTooltip(pos)
+                self._activeTooltipText = text
+            end
+        elseif self._activeTooltipText then
+            self:_HideTooltip()
         end
     end)
 end
 
-function Library:_HideTooltip()
-    if self.TooltipTrack then
-        self.TooltipTrack:Disconnect()
-        self.TooltipTrack = nil
+local function resolveTooltipText(info)
+    if type(info) ~= "table" then
+        return nil
     end
-    if self.Tooltip then
-        self.Tooltip.Visible = false
-    end
+    return info.Tooltip or info.ToolTip or info.tooltip
 end
 
 function Library:_BindTooltip(instances, text)
     if not text or text == "" or not instances then
-        return
+        return nil
     end
 
-    local hoverCount = 0
     local targets = type(instances) == "table" and instances or { instances }
-
-    local function onEnter()
-        hoverCount += 1
-        self:_ShowTooltip(text)
-    end
-
-    local function onLeave()
-        hoverCount -= 1
-        if hoverCount <= 0 then
-            hoverCount = 0
-            self:_HideTooltip()
-        end
-    end
-
-    for _, obj in ipairs(targets) do
-        if obj then
-            Connect(obj.MouseEnter, onEnter)
-            Connect(obj.MouseLeave, onLeave)
-        end
-    end
+    local entry = { objects = targets, text = text }
+    table.insert(self.TooltipTargets, entry)
+    self:_StartTooltipPolling()
+    return entry
 end
 
 function Library:Notify(text, duration)
@@ -1229,10 +1254,11 @@ function Library:CreateWindow(cfg)
     function Window:Toggle()
         Library.Open = not Library.Open
         main.Visible = Library.Open
-        if not Library.Open then Library:CloseAllPopups() end
+        if not Library.Open then Library:CloseAllPopups() Library:_HideTooltip() end
     end
 
     Library.Window = Window
+    Library.Open = true
     Library:_InitGlobals(main, mobile)
     return Window
 end
@@ -1564,12 +1590,24 @@ function Library:_BuildSection(container)
             return Library:_KeyPicker(holder, kid, kinfo)
         end
         function Toggle:SetTooltip(text)
+            if Toggle._tooltipEntry then
+                local idx = table.find(Library.TooltipTargets, Toggle._tooltipEntry)
+                if idx then
+                    table.remove(Library.TooltipTargets, idx)
+                end
+                Toggle._tooltipEntry = nil
+            end
+
             Toggle.Tooltip = text
-            Library:_BindTooltip({ row, label, box, holder }, text)
+            if text and text ~= "" then
+                Toggle._tooltipEntry = Library:_BindTooltip({ row, label, box, holder }, text)
+            end
             return Toggle
         end
-        if info.Tooltip then
-            Toggle:SetTooltip(info.Tooltip)
+
+        local tooltipText = resolveTooltipText(info)
+        if tooltipText then
+            Toggle:SetTooltip(tooltipText)
         end
         Toggle:SetValue(Toggle.Value)
         Library.Toggles[id] = Toggle
@@ -2703,11 +2741,13 @@ function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
     self:_HideTooltip()
+    table.clear(self.TooltipTargets)
     for _, fn in ipairs(self.UnloadCallbacks) do
         pcall(fn)
     end
     for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
     table.clear(self.Connections)
+    if self.TooltipGui then self.TooltipGui:Destroy() end
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
 
