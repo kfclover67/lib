@@ -80,6 +80,7 @@ local Library = {
     CustomFontAssets = {},
     DependencyBoxes = {},
     KeybindEntries = {},
+    ShowCursorDot = false,
     Theme = {
         DarkBackground    = Color3.fromRGB(11, 11, 13),
         PageBackground    = Color3.fromRGB(15, 15, 17),
@@ -491,6 +492,20 @@ local function getMouseGuiPosition(target)
     return pos
 end
 
+local function isInMainGui(obj)
+    if not obj or not Library.ScreenGui then
+        return false
+    end
+    local current = obj
+    while current do
+        if current == Library.ScreenGui then
+            return true
+        end
+        current = current.Parent
+    end
+    return false
+end
+
 local function isGuiShown(obj)
     local current = obj
     while current do
@@ -536,6 +551,20 @@ function Library:CloseAllPopups(except)
     end
 end
 
+local function getTooltipTextAtMouse()
+    local pos = getMouseGuiPosition(Library.ScreenGui)
+
+    for i = #Library.TooltipTargets, 1, -1 do
+        local entry = Library.TooltipTargets[i]
+        local row = entry.row
+        if row and row.Parent and isInMainGui(row) and isGuiShown(row) and within(pos, row) then
+            return entry.text
+        end
+    end
+
+    return nil
+end
+
 function Library:_PositionTooltip(mousePos)
     local tip = self.Tooltip
     if not tip or not tip.Visible then
@@ -546,15 +575,12 @@ function Library:_PositionTooltip(mousePos)
     local x = mousePos.X + offset
     local y = mousePos.Y + offset
     local size = tip.AbsoluteSize
-    local inset = GuiService:GetGuiInset()
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-    local maxX = viewport.X
-    local maxY = viewport.Y + inset.Y
 
-    if x + size.X > maxX - 8 then
+    if x + size.X > viewport.X - 8 then
         x = mousePos.X - size.X - offset
     end
-    if y + size.Y > maxY - 8 then
+    if y + size.Y > viewport.Y - 8 then
         y = mousePos.Y - size.Y - offset
     end
 
@@ -571,7 +597,7 @@ function Library:_EnsureTooltip()
             Name = "star_tooltips",
             ResetOnSpawn = false,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            IgnoreGuiInset = true,
+            IgnoreGuiInset = false,
             DisplayOrder = 100000,
         })
         local ok = pcall(function()
@@ -645,17 +671,8 @@ function Library:_StartTooltipPolling()
             return
         end
 
-        local pos = getMouseGuiPosition(self.ScreenGui)
-        local text
-
-        for i = #self.TooltipTargets, 1, -1 do
-            local entry = self.TooltipTargets[i]
-            local row = entry.row
-            if row and within(pos, row) then
-                text = entry.text
-                break
-            end
-        end
+        local mouse = UserInputService:GetMouseLocation()
+        local text = getTooltipTextAtMouse()
 
         if text then
             local tip = self:_EnsureTooltip()
@@ -664,13 +681,78 @@ function Library:_StartTooltipPolling()
                     self.TooltipLabel.Text = text
                 end
                 tip.Visible = true
-                self:_PositionTooltip(getMouseGuiPosition(tip))
+                self:_PositionTooltip(mouse)
                 self._activeTooltipText = text
             end
         elseif self._activeTooltipText then
             self:_HideTooltip()
         end
     end)
+end
+
+function Library:_EnsureCursorDot()
+    if self.CursorDot and self.CursorDot.Parent then
+        return self.CursorDot
+    end
+
+    if not self.CursorDotGui or not self.CursorDotGui.Parent then
+        local gui = New("ScreenGui", {
+            Name = "star_cursor",
+            ResetOnSpawn = false,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+            IgnoreGuiInset = false,
+            DisplayOrder = 100001,
+        })
+        local ok = pcall(function()
+            if gethui then
+                gui.Parent = gethui()
+            elseif syn and syn.protect_gui then
+                syn.protect_gui(gui)
+                gui.Parent = game:GetService("CoreGui")
+            else
+                gui.Parent = game:GetService("CoreGui")
+            end
+        end)
+        if not ok then
+            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+        self.CursorDotGui = gui
+    end
+
+    local dot = New("Frame", {
+        Name = "CursorDot",
+        Parent = self.CursorDotGui,
+        Size = UDim2.fromOffset(7, 7),
+        AnchorPoint = Vector2.new(0.5, 1),
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 2,
+    })
+    Corner(3.5, dot)
+    self:AddToRegistry(dot, "BackgroundColor3", "Accent")
+
+    self.CursorDot = dot
+    return dot
+end
+
+function Library:SetCursorDotVisible(v)
+    self.ShowCursorDot = v and true or false
+    if not self.ShowCursorDot and self.CursorDot then
+        self.CursorDot.Visible = false
+    end
+end
+
+function Library:_UpdateCursorDot()
+    if self.ShowCursorDot and self.Open then
+        local dot = self:_EnsureCursorDot()
+        local mouse = UserInputService:GetMouseLocation()
+        dot.AnchorPoint = Vector2.new(0.5, 1)
+        dot.Position = UDim2.fromOffset(mouse.X, mouse.Y - 1)
+        dot.Visible = true
+    elseif self.CursorDot then
+        self.CursorDot.Visible = false
+    end
 end
 
 local function resolveTooltipText(info)
@@ -1058,6 +1140,8 @@ function Library:CreateWindow(cfg)
         local Tab = { Page = page, LeftColumn = left, RightColumn = right, Button = tabButton }
 
         local function select()
+            Library:CloseAllPopups()
+            Library:_HideTooltip()
             Library._currentTabSelect = select
             for _, t in ipairs(Window.Tabs) do
                 t.Page.Visible = false
@@ -1104,6 +1188,7 @@ function Library:CreateWindow(cfg)
             Corner(5, section)
             Library:AddToRegistry(Stroke(section, Library.Theme.Border, 1, 0), "Color", "Border")
             Padding(section, 12)
+            section:SetAttribute("StarRowOrder", 0)
 
             New("UIListLayout", {
                 Parent = section,
@@ -1189,6 +1274,8 @@ function Library:CreateWindow(cfg)
             local Tabbox = { Tabs = {}, _current = nil }
 
             local function selectTab(tab)
+                Library:CloseAllPopups()
+                Library:_HideTooltip()
                 Tabbox._current = tab
                 for _, t in ipairs(Tabbox.Tabs) do
                     t.Page.Visible = false
@@ -1299,7 +1386,11 @@ function Library:CreateWindow(cfg)
     function Window:Toggle()
         Library.Open = not Library.Open
         main.Visible = Library.Open
-        if not Library.Open then Library:CloseAllPopups() Library:_HideTooltip() end
+        if not Library.Open then
+            Library:CloseAllPopups()
+            Library:_HideTooltip()
+            Library:_UpdateCursorDot()
+        end
     end
 
     Library.Window = Window
@@ -1315,12 +1406,18 @@ function Library:_InitGlobals(main, mobile)
     Connect(RunService.RenderStepped, function()
         for popup, data in pairs(self.ActivePopups) do
             if popup.Visible and data.PosFn then
-                data.PosFn()
+                local anchor = data.Anchor
+                if not anchor or not anchor.Parent or not isGuiShown(anchor) then
+                    self:ClosePopup(popup)
+                else
+                    data.PosFn()
+                end
             elseif not popup.Visible then
                 self.ActivePopups[popup] = nil
             end
         end
         self:_UpdateWatermark()
+        self:_UpdateCursorDot()
     end)
 
     Connect(UserInputService.InputBegan, function(input, gpe)
@@ -1482,11 +1579,7 @@ function Library:_BuildSection(container)
     end
 
     function Section:AddDivider()
-        local row = New("Frame", {
-            Parent = container,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 10),
-        })
+        local row = makeRow(container, 10)
         local line = New("Frame", {
             Parent = row,
             AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1518,11 +1611,7 @@ function Library:_BuildSection(container)
 
     function Section:AddButton(a, b)
         local info = normalizeButton(a, b)
-        local rowHolder = New("Frame", {
-            Parent = container,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 30),
-        })
+        local rowHolder = makeRow(container, 30)
         New("UIListLayout", {
             Parent = rowHolder,
             FillDirection = Enum.FillDirection.Horizontal,
@@ -1853,11 +1942,16 @@ function Library:_BuildSection(container)
     end
 
     function Section:AddDependencyBox()
+        local order = (container:GetAttribute("StarRowOrder") or 0) + 1
+        container:SetAttribute("StarRowOrder", order)
+
         local box = New("Frame", {
             Parent = container, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y, ClipsDescendants = true, Visible = false,
+            LayoutOrder = order,
         })
         New("UIListLayout", { Parent = box, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+        box:SetAttribute("StarRowOrder", 0)
         local inner = Library:_BuildSection(box)
         inner._depBox = box
         inner._deps = {}
@@ -2675,6 +2769,13 @@ function Library:BuildSettingsTab(tab)
     local wm = themeBox:AddToggle("watermark", { Text = "watermark", Default = false, Callback = function(v)
         self:SetWatermarkVisible(v)
     end })
+    themeBox:AddToggle("ui_cursor", {
+        Text = "cursor",
+        Default = self.ShowCursorDot,
+        Callback = function(v)
+            self:SetCursorDotVisible(v)
+        end,
+    })
     local menuKp = themeBox:AddLabel("menu toggle"):AddKeyPicker("menu_keybind", {
         Default = "RightShift", Mode = "Toggle", Text = "menu toggle", NoList = true,
     })
@@ -2806,6 +2907,7 @@ function Library:Unload()
     for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
     table.clear(self.Connections)
     if self.TooltipGui then self.TooltipGui:Destroy() end
+    if self.CursorDotGui then self.CursorDotGui:Destroy() end
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
 
