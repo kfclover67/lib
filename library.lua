@@ -60,8 +60,8 @@ end
 local function ensureFontFolders()
     if not (fs.makefolder and fs.isfolder) then return end
     pcall(function()
-        if not fs.isfolder("star") then fs.makefolder("star") end
-        if not fs.isfolder("star/fonts") then fs.makefolder("star/fonts") end
+        if not fs.isfolder("void") then fs.makefolder("void") end
+        if not fs.isfolder("void/fonts") then fs.makefolder("void/fonts") end
     end)
 end
 
@@ -74,13 +74,11 @@ local Library = {
     Options      = {},
     Connections  = {},
     ActivePopups = {},
-    TooltipTargets = {},
     Registry     = {},
     FontRegistry = {},
     CustomFontAssets = {},
     DependencyBoxes = {},
     KeybindEntries = {},
-    ShowCursorDot = false,
     Theme = {
         DarkBackground    = Color3.fromRGB(11, 11, 13),
         PageBackground    = Color3.fromRGB(15, 15, 17),
@@ -132,7 +130,7 @@ local Library = {
     CurrentFontSpec = { enum = Enum.Font.Gotham },
     Open      = true,
     IsMobile  = (UserInputService.TouchEnabled and not UserInputService.MouseEnabled),
-    ConfigFolder = "star",
+    ConfigFolder = "void",
     KeybindListVisible = true,
     KeybindListMode = "toggled",
     UnloadCallbacks = {},
@@ -281,11 +279,11 @@ local function resolveDropdownDefault(values, default, multi)
 end
 
 local function parseTitle(raw, fallbackIcon)
-    local text, icon = "star", nil
+    local text, icon = "void", nil
     if type(raw) == "string" then
         text = raw
     elseif type(raw) == "table" then
-        text = raw[1] or raw.Text or raw.text or raw.Name or raw.name or "star"
+        text = raw[1] or raw.Text or raw.text or raw.Name or raw.name or "void"
         icon = raw[2] or raw.Icon or raw.icon or raw.Image or raw.image
     elseif raw ~= nil then
         text = tostring(raw)
@@ -375,8 +373,8 @@ function Library:DownloadFont(name, link)
     ensureFontFolders()
 
     local safeName = cleanFileName(name)
-    local fontPath = "star/fonts/" .. safeName .. ".ttf"
-    local familyPath = "star/fonts/" .. safeName .. ".font"
+    local fontPath = "void/fonts/" .. safeName .. ".ttf"
+    local familyPath = "void/fonts/" .. safeName .. ".font"
 
     local data
     if fs.isfile(fontPath) then
@@ -446,6 +444,41 @@ function Library:DownloadFont(name, link)
     return nil
 end
 
+function Library:FontIsCached(name)
+    if not (fs.isfile and fs.readfile) then
+        return false
+    end
+
+    if self.CustomFontAssets[name] then
+        return true
+    end
+
+    local safeName = cleanFileName(name)
+    local fontPath = "void/fonts/" .. safeName .. ".ttf"
+    local familyPath = "void/fonts/" .. safeName .. ".font"
+
+    if not fs.isfile(fontPath) or not fs.isfile(familyPath) then
+        return false
+    end
+
+    local ok, cached = pcall(fs.readfile, fontPath)
+    return ok and looksLikeFontData(cached)
+end
+
+function Library:AnyFontsNeedDownload()
+    if not (fs.writefile and fs.readfile and fs.isfile and getCustomAsset) then
+        return false
+    end
+
+    for name, info in pairs(self.FontsToDownload) do
+        if info and info.Link and not self:FontIsCached(name) then
+            return true
+        end
+    end
+
+    return false
+end
+
 function Library:SetFont(spec)
     if spec and spec.custom and not self.CustomFontAssets[spec.custom] then
         local info = self.FontsToDownload[spec.custom]
@@ -463,47 +496,22 @@ function Library:SetFont(spec)
 end
 
 function Library:DownloadAllFonts()
+    local notify
+    if self:AnyFontsNeedDownload() then
+        notify = self:Notify("downloading fonts", false)
+    end
+
     for name, info in pairs(self.FontsToDownload) do
         if info and info.Link then
             self:DownloadFont(name, info.Link)
         end
     end
+
+    if notify then
+        notify:Dismiss()
+    end
+
     return self.CustomFontAssets
-end
-
-local function getScreenGui(obj)
-    local current = obj
-    while current do
-        if current:IsA("ScreenGui") then
-            return current
-        end
-        current = current.Parent
-    end
-    return nil
-end
-
-local function getMouseGuiPosition(target)
-    local pos = UserInputService:GetMouseLocation()
-    local screenGui = (target and getScreenGui(target)) or Library.ScreenGui
-    if screenGui and screenGui.IgnoreGuiInset then
-        local inset = GuiService:GetGuiInset()
-        return Vector2.new(pos.X, pos.Y + inset.Y)
-    end
-    return pos
-end
-
-local function isInMainGui(obj)
-    if not obj or not Library.ScreenGui then
-        return false
-    end
-    local current = obj
-    while current do
-        if current == Library.ScreenGui then
-            return true
-        end
-        current = current.Parent
-    end
-    return false
 end
 
 local function isGuiShown(obj)
@@ -551,260 +559,14 @@ function Library:CloseAllPopups(except)
     end
 end
 
-local function getTooltipTextAtMouse()
-    local pos = getMouseGuiPosition(Library.ScreenGui)
-
-    for i = #Library.TooltipTargets, 1, -1 do
-        local entry = Library.TooltipTargets[i]
-        local row = entry.row
-        if row and row.Parent and isInMainGui(row) and isGuiShown(row) and within(pos, row) then
-            return entry.text
-        end
-    end
-
-    return nil
-end
-
-function Library:_PositionTooltip(mousePos)
-    local tip = self.Tooltip
-    if not tip or not tip.Visible then
-        return
-    end
-
-    local offset = 14
-    local x = mousePos.X + offset
-    local y = mousePos.Y + offset
-    local size = tip.AbsoluteSize
-    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-
-    if x + size.X > viewport.X - 8 then
-        x = mousePos.X - size.X - offset
-    end
-    if y + size.Y > viewport.Y - 8 then
-        y = mousePos.Y - size.Y - offset
-    end
-
-    tip.Position = UDim2.fromOffset(math.max(8, x), math.max(8, y))
-end
-
-function Library:_EnsureTooltip()
-    if self.Tooltip and self.Tooltip.Parent then
-        return self.Tooltip
-    end
-
-    if not self.TooltipGui or not self.TooltipGui.Parent then
-        local gui = New("ScreenGui", {
-            Name = "star_tooltips",
-            ResetOnSpawn = false,
-            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            IgnoreGuiInset = false,
-            DisplayOrder = 100000,
-        })
-        local ok = pcall(function()
-            if gethui then
-                gui.Parent = gethui()
-            elseif syn and syn.protect_gui then
-                syn.protect_gui(gui)
-                gui.Parent = game:GetService("CoreGui")
-            else
-                gui.Parent = game:GetService("CoreGui")
-            end
-        end)
-        if not ok then
-            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-        self.TooltipGui = gui
-    end
-
-    local frame = New("Frame", {
-        Name = "Tooltip",
-        Parent = self.TooltipGui,
-        BackgroundColor3 = self.Theme.SectionBackground,
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 2,
-        AutomaticSize = Enum.AutomaticSize.Y,
-        Size = UDim2.fromOffset(220, 0),
-    })
-    self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
-    Corner(5, frame)
-    self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
-    Padding(frame, 8)
-
-    local label = New("TextLabel", {
-        Name = "Text",
-        Parent = frame,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        Font = self.Font,
-        Text = "",
-        TextSize = 13,
-        TextColor3 = self.Theme.LightText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextWrapped = true,
-    })
-    self:AddToRegistry(label, "TextColor3", "LightText")
-
-    self.Tooltip = frame
-    self.TooltipLabel = label
-    return frame
-end
-
-function Library:_HideTooltip()
-    if self.Tooltip then
-        self.Tooltip.Visible = false
-    end
-    self._activeTooltipText = nil
-end
-
-function Library:_StartTooltipPolling()
-    if self.TooltipPolling then
-        return
-    end
-    self.TooltipPolling = true
-
-    Connect(RunService.Heartbeat, function()
-        if self.Open == false or #self.TooltipTargets == 0 then
-            self:_HideTooltip()
-            return
-        end
-
-        local mouse = UserInputService:GetMouseLocation()
-        local text = getTooltipTextAtMouse()
-
-        if text then
-            local tip = self:_EnsureTooltip()
-            if tip then
-                if self.TooltipLabel.Text ~= text then
-                    self.TooltipLabel.Text = text
-                end
-                tip.Visible = true
-                self:_PositionTooltip(mouse)
-                self._activeTooltipText = text
-            end
-        elseif self._activeTooltipText then
-            self:_HideTooltip()
-        end
-    end)
-end
-
-function Library:_EnsureCursorDot()
-    if self.CursorDot and self.CursorDot.Parent then
-        return self.CursorDot
-    end
-
-    local parentGui = self.ScreenGui
-    if not parentGui or not parentGui.Parent then
-        if not self.CursorDotGui or not self.CursorDotGui.Parent then
-            local gui = New("ScreenGui", {
-                Name = "star_cursor",
-                ResetOnSpawn = false,
-                ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-                IgnoreGuiInset = true,
-                DisplayOrder = 100001,
-            })
-            local ok = pcall(function()
-                if gethui then
-                    gui.Parent = gethui()
-                elseif syn and syn.protect_gui then
-                    syn.protect_gui(gui)
-                    gui.Parent = game:GetService("CoreGui")
-                else
-                    gui.Parent = game:GetService("CoreGui")
-                end
-            end)
-            if not ok then
-                gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-            end
-            self.CursorDotGui = gui
-        end
-        parentGui = self.CursorDotGui
-    end
-
-    local holder = New("Frame", {
-        Name = "CursorDot",
-        Parent = parentGui,
-        BackgroundTransparency = 1,
-        Size = UDim2.fromOffset(1, 1),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 100000,
-    })
-
-    local glow = New("Frame", {
-        Parent = holder,
-        Size = UDim2.fromOffset(16, 16),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        BackgroundColor3 = self.Theme.Accent,
-        BackgroundTransparency = 0.72,
-        BorderSizePixel = 0,
-        ZIndex = 1,
-    })
-    Corner(8, glow)
-    self:AddToRegistry(glow, "BackgroundColor3", "Accent")
-
-    local core = New("Frame", {
-        Parent = holder,
-        Size = UDim2.fromOffset(5, 5),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        BackgroundColor3 = self.Theme.Accent,
-        BorderSizePixel = 0,
-        ZIndex = 2,
-    })
-    Corner(2.5, core)
-    self:AddToRegistry(core, "BackgroundColor3", "Accent")
-    Stroke(core, Color3.fromRGB(235, 240, 255), 1, 0.2)
-
-    self.CursorDot = holder
-    return holder
-end
-
-function Library:SetCursorDotVisible(v)
-    self.ShowCursorDot = v and true or false
-    if not self.ShowCursorDot and self.CursorDot then
-        self.CursorDot.Visible = false
-    end
-end
-
-function Library:_UpdateCursorDot()
-    if self.ShowCursorDot and self.Open then
-        local dot = self:_EnsureCursorDot()
-        local pos = getMouseGuiPosition(dot.Parent)
-        dot.Position = UDim2.fromOffset(pos.X, pos.Y)
-        dot.Visible = true
-    elseif self.CursorDot then
-        self.CursorDot.Visible = false
-    end
-end
-
-local function resolveTooltipText(info)
-    if type(info) ~= "table" then
-        return nil
-    end
-    return info.Tooltip or info.ToolTip or info.tooltip
-end
-
-function Library:_BindTooltip(row, text)
-    if not text or text == "" or not row then
-        return nil
-    end
-
-    local entry = { row = row, text = text }
-    row:SetAttribute("StarTooltip", text)
-    table.insert(self.TooltipTargets, entry)
-    self:_StartTooltipPolling()
-    return entry
-end
-
 function Library:Notify(text, duration)
-    duration = duration or 4
+    if duration == nil then
+        duration = 4
+    end
+
     local holder = self.NotifyHolder
-    if not holder then return end
+    if not holder then return nil end
+
     local frame = New("Frame", {
         Parent = holder,
         BackgroundColor3 = self.Theme.SectionBackground,
@@ -827,20 +589,37 @@ function Library:Notify(text, duration)
         TextXAlignment = Enum.TextXAlignment.Left,
     })
     New("UIPadding", { Parent = frame, PaddingRight = UDim.new(0, 12) })
-    task.delay(duration, function()
-        if frame and frame.Parent then
-            Tween(frame, 0.2, { BackgroundTransparency = 1 })
-            Tween(lbl, 0.2, { TextTransparency = 1 })
-            task.wait(0.25)
-            frame:Destroy()
+
+    local notify = { Frame = frame, Label = lbl, Dismissed = false }
+    function notify:Dismiss()
+        if self.Dismissed then return self end
+        self.Dismissed = true
+        local f, l = self.Frame, self.Label
+        if f and f.Parent then
+            Tween(f, 0.2, { BackgroundTransparency = 1 })
+            Tween(l, 0.2, { TextTransparency = 1 })
+            task.delay(0.25, function()
+                if f and f.Parent then
+                    f:Destroy()
+                end
+            end)
         end
-    end)
+        return self
+    end
+
+    if duration ~= false then
+        task.delay(duration, function()
+            notify:Dismiss()
+        end)
+    end
+
+    return notify
 end
 
 local function makeRow(parent, height, order)
     if not order then
-        order = (parent:GetAttribute("StarRowOrder") or 0) + 1
-        parent:SetAttribute("StarRowOrder", order)
+        order = (parent:GetAttribute("VoidRowOrder") or 0) + 1
+        parent:SetAttribute("VoidRowOrder", order)
     end
 
     return New("Frame", {
@@ -889,7 +668,7 @@ function Library:CreateWindow(cfg)
     local sidebarW = cfg.SidebarWidth or 150
 
     local gui = New("ScreenGui", {
-        Name = "star_" .. tostring(math.random(1000, 9999)),
+        Name = "void_" .. tostring(math.random(1000, 9999)),
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         IgnoreGuiInset = true,
@@ -1168,7 +947,6 @@ function Library:CreateWindow(cfg)
 
         local function select()
             Library:CloseAllPopups()
-            Library:_HideTooltip()
             Library._currentTabSelect = select
             for _, t in ipairs(Window.Tabs) do
                 t.Page.Visible = false
@@ -1215,7 +993,7 @@ function Library:CreateWindow(cfg)
             Corner(5, section)
             Library:AddToRegistry(Stroke(section, Library.Theme.Border, 1, 0), "Color", "Border")
             Padding(section, 12)
-            section:SetAttribute("StarRowOrder", 0)
+            section:SetAttribute("VoidRowOrder", 0)
 
             New("UIListLayout", {
                 Parent = section,
@@ -1302,7 +1080,6 @@ function Library:CreateWindow(cfg)
 
             local function selectTab(tab)
                 Library:CloseAllPopups()
-                Library:_HideTooltip()
                 Tabbox._current = tab
                 for _, t in ipairs(Tabbox.Tabs) do
                     t.Page.Visible = false
@@ -1415,14 +1192,17 @@ function Library:CreateWindow(cfg)
         main.Visible = Library.Open
         if not Library.Open then
             Library:CloseAllPopups()
-            Library:_HideTooltip()
-            Library:_UpdateCursorDot()
         end
     end
 
     Library.Window = Window
     Library.Open = true
     Library:_InitGlobals(main, mobile)
+
+    task.spawn(function()
+        Library:DownloadAllFonts()
+    end)
+
     return Window
 end
 
@@ -1444,7 +1224,6 @@ function Library:_InitGlobals(main, mobile)
             end
         end
         self:_UpdateWatermark()
-        self:_UpdateCursorDot()
     end)
 
     Connect(UserInputService.InputBegan, function(input, gpe)
@@ -1524,7 +1303,7 @@ function Library:_CreateMobileButton(main)
 end
 
 function Library:CreateWatermark(text)
-    self.WatermarkText = text or self.Title or "star"
+    self.WatermarkText = text or self.Title or "void"
     local wm = New("Frame", {
         Parent = self.ScreenGui,
         Position = UDim2.fromOffset(20, 20),
@@ -1574,7 +1353,7 @@ function Library:_UpdateWatermark()
             ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
         end)
     end
-    self.WatermarkLabel.Text = string.format("%s  |  %d fps  |  %d ms", self.WatermarkText or "star", fps, ping)
+    self.WatermarkLabel.Text = string.format("%s  |  %d fps  |  %d ms", self.WatermarkText or "void", fps, ping)
 end
 
 function Library:_BuildSection(container)
@@ -1750,39 +1529,8 @@ function Library:_BuildSection(container)
             if kinfo.SyncToggleState then kinfo._toggle = Toggle end
             return Library:_KeyPicker(holder, kid, kinfo)
         end
-        function Toggle:SetTooltip(text)
-            if Toggle._tooltipEntry then
-                local idx = table.find(Library.TooltipTargets, Toggle._tooltipEntry)
-                if idx then
-                    table.remove(Library.TooltipTargets, idx)
-                end
-                if Toggle._tooltipEntry.row then
-                    Toggle._tooltipEntry.row:SetAttribute("StarTooltip", nil)
-                end
-                Toggle._tooltipEntry = nil
-            end
 
-            Toggle.Tooltip = text
-            Toggle.Row = row
-            if text and text ~= "" then
-                Toggle._tooltipEntry = Library:_BindTooltip(row, text)
-            else
-                row:SetAttribute("StarTooltip", nil)
-            end
-            return Toggle
-        end
-
-        Toggle.Row = row
         Toggle:SetValue(Toggle.Value)
-
-        local tooltipText = resolveTooltipText(info)
-        if tooltipText then
-            task.defer(function()
-                if row.Parent then
-                    Toggle:SetTooltip(tooltipText)
-                end
-            end)
-        end
 
         Library.Toggles[id] = Toggle
         return Toggle
@@ -1969,8 +1717,8 @@ function Library:_BuildSection(container)
     end
 
     function Section:AddDependencyBox()
-        local order = (container:GetAttribute("StarRowOrder") or 0) + 1
-        container:SetAttribute("StarRowOrder", order)
+        local order = (container:GetAttribute("VoidRowOrder") or 0) + 1
+        container:SetAttribute("VoidRowOrder", order)
 
         local box = New("Frame", {
             Parent = container, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
@@ -1978,7 +1726,7 @@ function Library:_BuildSection(container)
             LayoutOrder = order,
         })
         New("UIListLayout", { Parent = box, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
-        box:SetAttribute("StarRowOrder", 0)
+        box:SetAttribute("VoidRowOrder", 0)
         local inner = Library:_BuildSection(box)
         inner._depBox = box
         inner._deps = {}
@@ -2540,10 +2288,10 @@ end
 local function ensureFolders()
     if not hasFS() then return end
     pcall(function()
-        if not fs.isfolder("star") then fs.makefolder("star") end
-        if not fs.isfolder("star/configs") then fs.makefolder("star/configs") end
-        if not fs.isfolder("star/themes") then fs.makefolder("star/themes") end
-        if not fs.isfolder("star/fonts") then fs.makefolder("star/fonts") end
+        if not fs.isfolder("void") then fs.makefolder("void") end
+        if not fs.isfolder("void/configs") then fs.makefolder("void/configs") end
+        if not fs.isfolder("void/themes") then fs.makefolder("void/themes") end
+        if not fs.isfolder("void/fonts") then fs.makefolder("void/fonts") end
     end)
 end
 
@@ -2611,7 +2359,7 @@ function Library:SaveConfig(name)
     ensureFolders()
     local data = self:GetConfigData()
     local ok = pcall(function()
-        fs.writefile("star/configs/" .. name .. ".json", HttpService:JSONEncode(data))
+        fs.writefile("void/configs/" .. name .. ".json", HttpService:JSONEncode(data))
     end)
     if ok then self:Notify("saved config: " .. name) else self:Notify("failed to save config") end
     return ok
@@ -2619,7 +2367,7 @@ end
 
 function Library:LoadConfig(name)
     if not hasFS() then self:Notify("file system not supported") return false end
-    local path = "star/configs/" .. name .. ".json"
+    local path = "void/configs/" .. name .. ".json"
     if not fs.isfile(path) then self:Notify("config not found") return false end
     local ok, data = pcall(function() return HttpService:JSONDecode(fs.readfile(path)) end)
     if ok and data then self:ApplyConfigData(data); self:Notify("loaded config: " .. name); return true end
@@ -2629,7 +2377,7 @@ end
 
 function Library:DeleteConfig(name)
     if not hasFS() then return false end
-    local path = "star/configs/" .. name .. ".json"
+    local path = "void/configs/" .. name .. ".json"
     if fs.isfile(path) then pcall(fs.delfile, path); self:Notify("deleted config: " .. name); return true end
     return false
 end
@@ -2638,7 +2386,7 @@ function Library:GetConfigList()
     local list = {}
     if not hasFS() then return list end
     ensureFolders()
-    local ok, files = pcall(fs.listfiles, "star/configs")
+    local ok, files = pcall(fs.listfiles, "void/configs")
     if ok and files then
         for _, f in ipairs(files) do
             local name = f:match("([^/\\]+)%.json$")
@@ -2651,13 +2399,13 @@ end
 function Library:SetAutoload(name)
     if not hasFS() then return end
     ensureFolders()
-    pcall(fs.writefile, "star/configs/autoload.txt", name)
+    pcall(fs.writefile, "void/configs/autoload.txt", name)
 end
 
 function Library:GetAutoload()
     if not hasFS() then return nil end
-    if fs.isfile("star/configs/autoload.txt") then
-        local ok, n = pcall(fs.readfile, "star/configs/autoload.txt")
+    if fs.isfile("void/configs/autoload.txt") then
+        local ok, n = pcall(fs.readfile, "void/configs/autoload.txt")
         if ok then return n end
     end
     return nil
@@ -2668,14 +2416,14 @@ function Library:SaveTheme(name)
     ensureFolders()
     local data = { font = self.CurrentFontSpec, colors = {} }
     for k, c in pairs(self.Theme) do data.colors[k] = c:ToHex() end
-    local ok = pcall(function() fs.writefile("star/themes/" .. name .. ".json", HttpService:JSONEncode(data)) end)
+    local ok = pcall(function() fs.writefile("void/themes/" .. name .. ".json", HttpService:JSONEncode(data)) end)
     if ok then self:Notify("saved theme: " .. name) end
     return ok
 end
 
 function Library:LoadTheme(name)
     if not hasFS() then return false end
-    local path = "star/themes/" .. name .. ".json"
+    local path = "void/themes/" .. name .. ".json"
     if not fs.isfile(path) then return false end
     local ok, data = pcall(function() return HttpService:JSONDecode(fs.readfile(path)) end)
     if ok and data then
@@ -2700,7 +2448,7 @@ function Library:GetThemeList()
     local list = {}
     if not hasFS() then return list end
     ensureFolders()
-    local ok, files = pcall(fs.listfiles, "star/themes")
+    local ok, files = pcall(fs.listfiles, "void/themes")
     if ok and files then
         for _, f in ipairs(files) do
             local name = f:match("([^/\\]+)%.json$")
@@ -2796,13 +2544,6 @@ function Library:BuildSettingsTab(tab)
     local wm = themeBox:AddToggle("watermark", { Text = "watermark", Default = false, Callback = function(v)
         self:SetWatermarkVisible(v)
     end })
-    themeBox:AddToggle("ui_cursor", {
-        Text = "cursor",
-        Default = self.ShowCursorDot,
-        Callback = function(v)
-            self:SetCursorDotVisible(v)
-        end,
-    })
     local menuKp = themeBox:AddLabel("menu toggle"):AddKeyPicker("menu_keybind", {
         Default = "RightShift", Mode = "Toggle", Text = "menu toggle", NoList = true,
     })
@@ -2926,20 +2667,12 @@ end
 function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
-    self:_HideTooltip()
-    table.clear(self.TooltipTargets)
     for _, fn in ipairs(self.UnloadCallbacks) do
         pcall(fn)
     end
     for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
     table.clear(self.Connections)
-    if self.TooltipGui then self.TooltipGui:Destroy() end
-    if self.CursorDotGui then self.CursorDotGui:Destroy() end
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
-
-task.spawn(function()
-    Library:DownloadAllFonts()
-end)
 
 return Library
