@@ -495,6 +495,138 @@ function Library:CloseAllPopups(except)
     end
 end
 
+function Library:_PositionTooltip(mousePos)
+    local tip = self.Tooltip
+    if not tip or not tip.Visible then
+        return
+    end
+
+    local offset = 14
+    local x = mousePos.X + offset
+    local y = mousePos.Y + offset
+    local size = tip.AbsoluteSize
+    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+
+    if x + size.X > viewport.X - 8 then
+        x = mousePos.X - size.X - offset
+    end
+    if y + size.Y > viewport.Y - 8 then
+        y = mousePos.Y - size.Y - offset
+    end
+
+    tip.Position = UDim2.fromOffset(math.max(8, x), math.max(8, y))
+end
+
+function Library:_EnsureTooltip()
+    if self.Tooltip and self.Tooltip.Parent then
+        return self.Tooltip
+    end
+
+    if not self.ScreenGui then
+        return nil
+    end
+
+    local frame = New("Frame", {
+        Name = "Tooltip",
+        Parent = self.ScreenGui,
+        BackgroundColor3 = self.Theme.SectionBackground,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 200,
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Size = UDim2.fromOffset(220, 0),
+    })
+    self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
+    Corner(5, frame)
+    self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
+    Padding(frame, 8)
+
+    local label = New("TextLabel", {
+        Name = "Text",
+        Parent = frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Font = self.Font,
+        Text = "",
+        TextSize = 13,
+        TextColor3 = self.Theme.LightText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+    })
+    self:AddToRegistry(label, "TextColor3", "LightText")
+
+    self.Tooltip = frame
+    self.TooltipLabel = label
+    return frame
+end
+
+function Library:_ShowTooltip(text)
+    if not text or text == "" then
+        return
+    end
+
+    local tip = self:_EnsureTooltip()
+    if not tip then
+        return
+    end
+
+    self.TooltipLabel.Text = text
+    tip.Visible = true
+    self:_PositionTooltip(UserInputService:GetMouseLocation())
+
+    if self.TooltipTrack then
+        self.TooltipTrack:Disconnect()
+        self.TooltipTrack = nil
+    end
+
+    self.TooltipTrack = Connect(RunService.RenderStepped, function()
+        if tip.Visible then
+            self:_PositionTooltip(UserInputService:GetMouseLocation())
+        end
+    end)
+end
+
+function Library:_HideTooltip()
+    if self.TooltipTrack then
+        self.TooltipTrack:Disconnect()
+        self.TooltipTrack = nil
+    end
+    if self.Tooltip then
+        self.Tooltip.Visible = false
+    end
+end
+
+function Library:_BindTooltip(instances, text)
+    if not text or text == "" or not instances then
+        return
+    end
+
+    local hoverCount = 0
+    local targets = type(instances) == "table" and instances or { instances }
+
+    local function onEnter()
+        hoverCount += 1
+        self:_ShowTooltip(text)
+    end
+
+    local function onLeave()
+        hoverCount -= 1
+        if hoverCount <= 0 then
+            hoverCount = 0
+            self:_HideTooltip()
+        end
+    end
+
+    for _, obj in ipairs(targets) do
+        if obj then
+            Connect(obj.MouseEnter, onEnter)
+            Connect(obj.MouseLeave, onLeave)
+        end
+    end
+end
+
 function Library:Notify(text, duration)
     duration = duration or 4
     local holder = self.NotifyHolder
@@ -1430,6 +1562,14 @@ function Library:_BuildSection(container)
             kinfo = kinfo or {}
             if kinfo.SyncToggleState then kinfo._toggle = Toggle end
             return Library:_KeyPicker(holder, kid, kinfo)
+        end
+        function Toggle:SetTooltip(text)
+            Toggle.Tooltip = text
+            Library:_BindTooltip({ row, label, box, holder }, text)
+            return Toggle
+        end
+        if info.Tooltip then
+            Toggle:SetTooltip(info.Tooltip)
         end
         Toggle:SetValue(Toggle.Value)
         Library.Toggles[id] = Toggle
@@ -2562,6 +2702,7 @@ end
 function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
+    self:_HideTooltip()
     for _, fn in ipairs(self.UnloadCallbacks) do
         pcall(fn)
     end
