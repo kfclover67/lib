@@ -1,5 +1,6 @@
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local GuiService       = game:GetService("GuiService")
 local TweenService     = game:GetService("TweenService")
 local RunService       = game:GetService("RunService")
 local HttpService      = game:GetService("HttpService")
@@ -469,6 +470,27 @@ function Library:DownloadAllFonts()
     return self.CustomFontAssets
 end
 
+local function getScreenGui(obj)
+    local current = obj
+    while current do
+        if current:IsA("ScreenGui") then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+local function getMouseGuiPosition(target)
+    local pos = UserInputService:GetMouseLocation()
+    local screenGui = (target and getScreenGui(target)) or Library.ScreenGui
+    if screenGui and screenGui.IgnoreGuiInset then
+        local inset = GuiService:GetGuiInset()
+        return Vector2.new(pos.X, pos.Y + inset.Y)
+    end
+    return pos
+end
+
 local function isGuiShown(obj)
     local current = obj
     while current do
@@ -524,12 +546,15 @@ function Library:_PositionTooltip(mousePos)
     local x = mousePos.X + offset
     local y = mousePos.Y + offset
     local size = tip.AbsoluteSize
+    local inset = GuiService:GetGuiInset()
     local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    local maxX = viewport.X
+    local maxY = viewport.Y + inset.Y
 
-    if x + size.X > viewport.X - 8 then
+    if x + size.X > maxX - 8 then
         x = mousePos.X - size.X - offset
     end
-    if y + size.Y > viewport.Y - 8 then
+    if y + size.Y > maxY - 8 then
         y = mousePos.Y - size.Y - offset
     end
 
@@ -620,7 +645,7 @@ function Library:_StartTooltipPolling()
             return
         end
 
-        local pos = UserInputService:GetMouseLocation()
+        local pos = getMouseGuiPosition(self.ScreenGui)
         local text
 
         for i = #self.TooltipTargets, 1, -1 do
@@ -639,7 +664,7 @@ function Library:_StartTooltipPolling()
                     self.TooltipLabel.Text = text
                 end
                 tip.Visible = true
-                self:_PositionTooltip(pos)
+                self:_PositionTooltip(getMouseGuiPosition(tip))
                 self._activeTooltipText = text
             end
         elseif self._activeTooltipText then
