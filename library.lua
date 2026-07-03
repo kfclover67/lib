@@ -469,9 +469,27 @@ function Library:DownloadAllFonts()
     return self.CustomFontAssets
 end
 
+local function isGuiShown(obj)
+    local current = obj
+    while current do
+        if current:IsA("GuiObject") and not current.Visible then
+            return false
+        end
+        current = current.Parent
+    end
+    return true
+end
+
 local function within(pos, obj)
-    if not obj or not obj.Visible then return false end
+    if not obj or not obj.Parent or not isGuiShown(obj) then
+        return false
+    end
+
     local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+    if s.X <= 0 or s.Y <= 0 then
+        return false
+    end
+
     return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
 end
 
@@ -605,14 +623,11 @@ function Library:_StartTooltipPolling()
         local pos = UserInputService:GetMouseLocation()
         local text
 
-        for _, entry in ipairs(self.TooltipTargets) do
-            for _, obj in ipairs(entry.objects) do
-                if obj and obj.Parent and within(pos, obj) then
-                    text = entry.text
-                    break
-                end
-            end
-            if text then
+        for i = #self.TooltipTargets, 1, -1 do
+            local entry = self.TooltipTargets[i]
+            local row = entry.row
+            if row and within(pos, row) then
+                text = entry.text
                 break
             end
         end
@@ -640,13 +655,13 @@ local function resolveTooltipText(info)
     return info.Tooltip or info.ToolTip or info.tooltip
 end
 
-function Library:_BindTooltip(instances, text)
-    if not text or text == "" or not instances then
+function Library:_BindTooltip(row, text)
+    if not text or text == "" or not row then
         return nil
     end
 
-    local targets = type(instances) == "table" and instances or { instances }
-    local entry = { objects = targets, text = text }
+    local entry = { row = row, text = text }
+    row:SetAttribute("StarTooltip", text)
     table.insert(self.TooltipTargets, entry)
     self:_StartTooltipPolling()
     return entry
@@ -689,11 +704,16 @@ function Library:Notify(text, duration)
 end
 
 local function makeRow(parent, height, order)
+    if not order then
+        order = (parent:GetAttribute("StarRowOrder") or 0) + 1
+        parent:SetAttribute("StarRowOrder", order)
+    end
+
     return New("Frame", {
         Parent = parent,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, height),
-        LayoutOrder = order or 0,
+        LayoutOrder = order,
     })
 end
 
@@ -1595,21 +1615,34 @@ function Library:_BuildSection(container)
                 if idx then
                     table.remove(Library.TooltipTargets, idx)
                 end
+                if Toggle._tooltipEntry.row then
+                    Toggle._tooltipEntry.row:SetAttribute("StarTooltip", nil)
+                end
                 Toggle._tooltipEntry = nil
             end
 
             Toggle.Tooltip = text
+            Toggle.Row = row
             if text and text ~= "" then
-                Toggle._tooltipEntry = Library:_BindTooltip({ row, label, box, holder }, text)
+                Toggle._tooltipEntry = Library:_BindTooltip(row, text)
+            else
+                row:SetAttribute("StarTooltip", nil)
             end
             return Toggle
         end
 
+        Toggle.Row = row
+        Toggle:SetValue(Toggle.Value)
+
         local tooltipText = resolveTooltipText(info)
         if tooltipText then
-            Toggle:SetTooltip(tooltipText)
+            task.defer(function()
+                if row.Parent then
+                    Toggle:SetTooltip(tooltipText)
+                end
+            end)
         end
-        Toggle:SetValue(Toggle.Value)
+
         Library.Toggles[id] = Toggle
         return Toggle
     end
