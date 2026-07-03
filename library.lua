@@ -695,45 +695,73 @@ function Library:_EnsureCursorDot()
         return self.CursorDot
     end
 
-    if not self.CursorDotGui or not self.CursorDotGui.Parent then
-        local gui = New("ScreenGui", {
-            Name = "star_cursor",
-            ResetOnSpawn = false,
-            ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            IgnoreGuiInset = false,
-            DisplayOrder = 100001,
-        })
-        local ok = pcall(function()
-            if gethui then
-                gui.Parent = gethui()
-            elseif syn and syn.protect_gui then
-                syn.protect_gui(gui)
-                gui.Parent = game:GetService("CoreGui")
-            else
-                gui.Parent = game:GetService("CoreGui")
+    local parentGui = self.ScreenGui
+    if not parentGui or not parentGui.Parent then
+        if not self.CursorDotGui or not self.CursorDotGui.Parent then
+            local gui = New("ScreenGui", {
+                Name = "star_cursor",
+                ResetOnSpawn = false,
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+                IgnoreGuiInset = true,
+                DisplayOrder = 100001,
+            })
+            local ok = pcall(function()
+                if gethui then
+                    gui.Parent = gethui()
+                elseif syn and syn.protect_gui then
+                    syn.protect_gui(gui)
+                    gui.Parent = game:GetService("CoreGui")
+                else
+                    gui.Parent = game:GetService("CoreGui")
+                end
+            end)
+            if not ok then
+                gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
             end
-        end)
-        if not ok then
-            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            self.CursorDotGui = gui
         end
-        self.CursorDotGui = gui
+        parentGui = self.CursorDotGui
     end
 
-    local dot = New("Frame", {
+    local holder = New("Frame", {
         Name = "CursorDot",
-        Parent = self.CursorDotGui,
-        Size = UDim2.fromOffset(7, 7),
-        AnchorPoint = Vector2.new(0.5, 1),
-        BackgroundColor3 = self.Theme.Accent,
+        Parent = parentGui,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromOffset(1, 1),
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BorderSizePixel = 0,
         Visible = false,
+        ZIndex = 100000,
+    })
+
+    local glow = New("Frame", {
+        Parent = holder,
+        Size = UDim2.fromOffset(16, 16),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        BackgroundColor3 = self.Theme.Accent,
+        BackgroundTransparency = 0.72,
+        BorderSizePixel = 0,
+        ZIndex = 1,
+    })
+    Corner(8, glow)
+    self:AddToRegistry(glow, "BackgroundColor3", "Accent")
+
+    local core = New("Frame", {
+        Parent = holder,
+        Size = UDim2.fromOffset(5, 5),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
         ZIndex = 2,
     })
-    Corner(3.5, dot)
-    self:AddToRegistry(dot, "BackgroundColor3", "Accent")
+    Corner(2.5, core)
+    self:AddToRegistry(core, "BackgroundColor3", "Accent")
+    Stroke(core, Color3.fromRGB(235, 240, 255), 1, 0.2)
 
-    self.CursorDot = dot
-    return dot
+    self.CursorDot = holder
+    return holder
 end
 
 function Library:SetCursorDotVisible(v)
@@ -746,9 +774,8 @@ end
 function Library:_UpdateCursorDot()
     if self.ShowCursorDot and self.Open then
         local dot = self:_EnsureCursorDot()
-        local mouse = UserInputService:GetMouseLocation()
-        dot.AnchorPoint = Vector2.new(0.5, 1)
-        dot.Position = UDim2.fromOffset(mouse.X, mouse.Y - 1)
+        local pos = getMouseGuiPosition(dot.Parent)
+        dot.Position = UDim2.fromOffset(pos.X, pos.Y)
         dot.Visible = true
     elseif self.CursorDot then
         self.CursorDot.Visible = false
