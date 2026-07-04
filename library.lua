@@ -3440,23 +3440,12 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         Size = UDim2.new(1, 0, 0, 360),
     })
 
-    New("TextLabel", {
-        Parent = root,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 16),
-        Font = self.Font,
-        Text = "preview",
-        TextSize = 12,
-        TextColor3 = self.Theme.DarkText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-
     local viewportHolder = New("Frame", {
         Parent = root,
         BackgroundColor3 = self.Theme.Inline,
         BorderSizePixel = 0,
-        Position = UDim2.fromOffset(0, 20),
-        Size = UDim2.new(1, 0, 1, -108),
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, 0, 1, -92),
     })
     Corner(4, viewportHolder)
     self:AddToRegistry(viewportHolder, "BackgroundColor3", "Inline")
@@ -3532,44 +3521,17 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         TextXAlignment = Enum.TextXAlignment.Left,
     })
 
-    local function makeSlider(parent, label, layoutOrder, defaultAlpha, minV, maxV, onChange)
-        local sliderBg = New("Frame", {
-            Parent = parent,
-            BackgroundColor3 = self.Theme.Inline,
-            BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 28),
-            LayoutOrder = layoutOrder,
-        })
-        Corner(4, sliderBg)
-        New("TextLabel", {
-            Parent = sliderBg,
-            BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(8, 2),
-            Size = UDim2.new(1, -16, 0, 12),
-            Font = self.Font,
-            Text = label,
-            TextSize = 11,
-            TextColor3 = self.Theme.DarkText,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        })
-        local fill = New("Frame", {
-            Parent = sliderBg,
-            BackgroundColor3 = self.Theme.Accent,
-            BorderSizePixel = 0,
-            Position = UDim2.fromOffset(8, 18),
-            Size = UDim2.new(defaultAlpha, -8, 0, 4),
-        })
-        Corner(2, fill)
-        local knob = New("TextButton", {
-            Parent = sliderBg,
-            BackgroundColor3 = self.Theme.LightText,
-            AutoButtonColor = false,
-            Text = "",
-            Size = UDim2.fromOffset(10, 10),
-            Position = UDim2.new(defaultAlpha, -5, 0, 15),
-        })
-        Corner(5, knob)
+    local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
+        local alpha = (value - minV) / (maxV - minV)
+        alpha = math.clamp(alpha, 0, 1)
+        local trackPad = 8
+        fill.Position = UDim2.fromOffset(trackPad, 18)
+        fill.Size = UDim2.new(alpha, -trackPad, 0, 4)
+        knob.AnchorPoint = Vector2.new(0.5, 0.5)
+        knob.Position = UDim2.new(alpha, trackPad, 0, 18)
+    end
 
+    local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
         local dragging = false
         Connect(knob.InputBegan, function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -3594,11 +3556,48 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
             local value = minV + (maxV - minV) * alpha
             onChange(value)
-            fill.Position = UDim2.fromOffset(8, 18)
-            fill.Size = UDim2.new(alpha, -8, 0, 4)
-            knob.AnchorPoint = Vector2.new(0.5, 0.5)
-            knob.Position = UDim2.new(alpha, 8, 0, 18)
+            setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
         end)
+    end
+
+    local function makeSlider(parent, label, layoutOrder, defaultValue, minV, maxV, onChange)
+        local sliderBg = New("Frame", {
+            Parent = parent,
+            BackgroundColor3 = self.Theme.Inline,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 28),
+            LayoutOrder = layoutOrder,
+        })
+        Corner(4, sliderBg)
+        New("TextLabel", {
+            Parent = sliderBg,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(8, 2),
+            Size = UDim2.new(1, -16, 0, 12),
+            Font = self.Font,
+            Text = label,
+            TextSize = 11,
+            TextColor3 = self.Theme.DarkText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        local fill = New("Frame", {
+            Parent = sliderBg,
+            BackgroundColor3 = self.Theme.Accent,
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 0, 0, 4),
+        })
+        Corner(2, fill)
+        local knob = New("TextButton", {
+            Parent = sliderBg,
+            BackgroundColor3 = self.Theme.LightText,
+            AutoButtonColor = false,
+            Text = "",
+            Size = UDim2.fromOffset(10, 10),
+        })
+        Corner(5, knob)
+        setSliderKnob(sliderBg, fill, knob, defaultValue, minV, maxV)
+        bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
+        return sliderBg, fill, knob
     end
 
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
@@ -3613,13 +3612,11 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     local SLIDER_ZOOM_MIN = 0.01
     local SLIDER_ZOOM_MAX = 100
 
-    local rotDefault = (rotationSpeed - 0.001) / (0.01 - 0.001)
-    local zoomDefault = (math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX) - SLIDER_ZOOM_MIN) / (SLIDER_ZOOM_MAX - SLIDER_ZOOM_MIN)
-    makeSlider(previewControls, "rotation speed", 2, rotDefault, 0.001, 0.01, function(v)
+    local rotSliderBg, rotFill, rotKnob = makeSlider(previewControls, "rotation speed", 2, rotationSpeed, 0.001, 0.01, function(v)
         rotationSpeed = v
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
-    makeSlider(previewControls, "zoom", 3, zoomDefault, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
+    local zoomSliderBg, zoomFill, zoomKnob = makeSlider(previewControls, "zoom", 3, math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX), SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
         zoomMultiplier = v
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
     end)
@@ -3682,6 +3679,14 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         if input.UserInputType == Enum.UserInputType.MouseWheel then
             local factor = 1.15 ^ input.Position.Z
             zoomMultiplier = math.max(ZOOM_MIN, zoomMultiplier * factor)
+            setSliderKnob(
+                zoomSliderBg,
+                zoomFill,
+                zoomKnob,
+                math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX),
+                SLIDER_ZOOM_MIN,
+                SLIDER_ZOOM_MAX
+            )
             updatePreviewCamera()
             if cfg.OnZoomChanged then cfg.OnZoomChanged(zoomMultiplier) end
             return
@@ -3753,18 +3758,6 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             end
         end)
     end
-
-    New("TextLabel", {
-        Parent = root,
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 0, 1, -18),
-        Size = UDim2.new(1, 0, 0, 14),
-        Font = self.Font,
-        Text = "uses esp settings — show local player not required",
-        TextSize = 11,
-        TextColor3 = self.Theme.DarkText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
 
     return PreviewPage
 end
