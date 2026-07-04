@@ -3460,11 +3460,11 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     })
 
     local overlay = New("Frame", {
-        Parent = viewportHolder,
+        Parent = viewport,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
-        ClipsDescendants = true,
-        ZIndex = 8,
+        ClipsDescendants = false,
+        ZIndex = 10,
     })
 
     local worldModel = New("WorldModel", { Parent = viewport })
