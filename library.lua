@@ -2717,35 +2717,11 @@ function Library:_BuildSkinChangerPage(page, cfg)
         ZIndex = 2,
     })
 
-    local subNav = New("Frame", {
-        Name = "SubNav",
-        Parent = body,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 28),
-    })
-    New("UIListLayout", {
-        Parent = subNav,
-        FillDirection = Enum.FillDirection.Horizontal,
-        HorizontalAlignment = Enum.HorizontalAlignment.Center,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 8),
-    })
-
     local mainBody = New("Frame", {
         Name = "MainBody",
         Parent = body,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(0, 34),
-        Size = UDim2.new(1, 0, 1, -34),
-    })
-
-    local miscBody = New("Frame", {
-        Name = "MaskBody",
-        Parent = body,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(0, 34),
-        Size = UDim2.new(1, 0, 1, -34),
-        Visible = false,
+        Size = UDim2.new(1, 0, 1, 0),
     })
 
     local function attachPreviewInput(holder, onZoom, onDrag)
@@ -3131,191 +3107,20 @@ function Library:_BuildSkinChangerPage(page, cfg)
     })
     Corner(5, zoomKnob)
 
-    local miscLabel = nil
-
-    local maskSelectPanel, maskSelectContent = makePanel(miscBody, "mask", 0.52, 0)
-    local maskPreviewPanel, maskPreviewContent = makePanel(miscBody, "preview", 0.48, 0)
-    maskPreviewPanel.Position = UDim2.new(0.52, 4, 0, 0)
-
-    local maskEnableRow = New("Frame", {
-        Parent = maskSelectContent,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-    })
-    local maskEnableBox = New("TextButton", {
-        Parent = maskEnableRow,
-        BackgroundColor3 = self.Theme.Inline,
-        AutoButtonColor = false,
-        Text = "",
-        Size = UDim2.fromOffset(14, 14),
-        Position = UDim2.fromOffset(0, 3),
-    })
-    Corner(3, maskEnableBox)
-    local maskEnableMark = New("Frame", {
-        Parent = maskEnableBox,
-        BackgroundColor3 = self.Theme.Accent,
-        BorderSizePixel = 0,
-        Size = UDim2.fromOffset(8, 8),
-        Position = UDim2.fromOffset(3, 3),
-        Visible = cfg.DefaultMaskEnabled or false,
-    })
-    Corner(2, maskEnableMark)
-    New("TextLabel", {
-        Parent = maskEnableRow,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(22, 0),
-        Size = UDim2.new(1, -22, 1, 0),
-        Font = self.Font,
-        Text = "enable",
-        TextSize = 13,
-        TextColor3 = self.Theme.Text,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-
-    local maskListHolder, maskSearch, maskSearchBtn, maskClearBtn, maskList =
-        makeSearchList(maskSelectContent, "mask", 26, 9999)
-    maskListHolder.Size = UDim2.new(1, 0, 1, -26)
-    maskListHolder.Position = UDim2.fromOffset(0, 26)
-
-    local maskViewportHolder, maskViewport, maskWorldModel, maskPreviewControls =
-        makePreviewBlock(maskPreviewContent, cfg.DefaultAutoRotate)
-
-    local maskAutoRotateRow = New("Frame", {
-        Parent = maskPreviewControls,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20),
-        LayoutOrder = 1,
-    })
-    local maskAutoRotateBox = New("TextButton", {
-        Parent = maskAutoRotateRow,
-        BackgroundColor3 = self.Theme.Inline,
-        AutoButtonColor = false,
-        Text = "",
-        Size = UDim2.fromOffset(14, 14),
-        Position = UDim2.fromOffset(0, 3),
-    })
-    Corner(3, maskAutoRotateBox)
-    local maskAutoRotateMark = New("Frame", {
-        Parent = maskAutoRotateBox,
-        BackgroundColor3 = self.Theme.Accent,
-        BorderSizePixel = 0,
-        Size = UDim2.fromOffset(8, 8),
-        Position = UDim2.fromOffset(3, 3),
-        Visible = cfg.DefaultAutoRotate ~= false,
-    })
-    Corner(2, maskAutoRotateMark)
-    New("TextLabel", {
-        Parent = maskAutoRotateRow,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(22, 0),
-        Size = UDim2.new(1, -22, 1, 0),
-        Font = self.Font,
-        Text = "auto rotate",
-        TextSize = 12,
-        TextColor3 = self.Theme.Text,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-
-    local maskRotSliderBg = New("Frame", {
-        Parent = maskPreviewControls,
-        BackgroundColor3 = self.Theme.Inline,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 28),
-        LayoutOrder = 2,
-    })
-    Corner(4, maskRotSliderBg)
-    New("TextLabel", {
-        Parent = maskRotSliderBg,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(8, 2),
-        Size = UDim2.new(1, -16, 0, 12),
-        Font = self.Font,
-        Text = "rotation speed",
-        TextSize = 11,
-        TextColor3 = self.Theme.DarkText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-    local maskRotFill = New("Frame", {
-        Parent = maskRotSliderBg,
-        BackgroundColor3 = self.Theme.Accent,
-        BorderSizePixel = 0,
-        Position = UDim2.fromOffset(8, 18),
-        Size = UDim2.new(0.5, -8, 0, 4),
-    })
-    Corner(2, maskRotFill)
-    local maskRotKnob = New("TextButton", {
-        Parent = maskRotSliderBg,
-        BackgroundColor3 = self.Theme.LightText,
-        AutoButtonColor = false,
-        Text = "",
-        Size = UDim2.fromOffset(10, 10),
-        Position = UDim2.new(0.5, -5, 0, 15),
-    })
-    Corner(5, maskRotKnob)
-
-    local maskZoomSliderBg = New("Frame", {
-        Parent = maskPreviewControls,
-        BackgroundColor3 = self.Theme.Inline,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 28),
-        LayoutOrder = 3,
-    })
-    Corner(4, maskZoomSliderBg)
-    New("TextLabel", {
-        Parent = maskZoomSliderBg,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(8, 2),
-        Size = UDim2.new(1, -16, 0, 12),
-        Font = self.Font,
-        Text = "zoom",
-        TextSize = 11,
-        TextColor3 = self.Theme.DarkText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-    local maskZoomFill = New("Frame", {
-        Parent = maskZoomSliderBg,
-        BackgroundColor3 = self.Theme.Accent,
-        BorderSizePixel = 0,
-        Position = UDim2.fromOffset(8, 18),
-        Size = UDim2.new(0.25, -8, 0, 4),
-    })
-    Corner(2, maskZoomFill)
-    local maskZoomKnob = New("TextButton", {
-        Parent = maskZoomSliderBg,
-        BackgroundColor3 = self.Theme.LightText,
-        AutoButtonColor = false,
-        Text = "",
-        Size = UDim2.fromOffset(10, 10),
-        Position = UDim2.new(0.25, -5, 0, 15),
-    })
-    Corner(5, maskZoomKnob)
-
-    local subTabButtons = {}
     local weaponButtons = {}
     local skinButtons = {}
-    local maskButtons = {}
     local selectedWeaponBtn = nil
     local selectedSkinBtn = nil
-    local selectedMaskBtn = nil
     local weaponFilter = ""
     local skinFilter = ""
-    local maskFilter = ""
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
     local zoomMultiplier = cfg.DefaultZoom or 0.25
-    local maskZoomMultiplier = cfg.DefaultMaskZoom or cfg.DefaultZoom or 0.25
     local autoRotate = cfg.DefaultAutoRotate ~= false
-    local maskAutoRotate = cfg.DefaultAutoRotate ~= false
     local previewModel = nil
-    local maskPreviewModel = nil
     local previewYaw = 0
     local previewPitch = 0
-    local maskPreviewYaw = 0
-    local maskPreviewPitch = 0
     local previewAngle = 0
-    local maskPreviewAngle = 0
     local previewConn = nil
-    local maskPreviewConn = nil
-    local activeTabId = "guns"
     local ZOOM_MIN = 0.001
     local SLIDER_ZOOM_MIN = 0.01
     local SLIDER_ZOOM_MAX = 100
@@ -3341,11 +3146,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
             elseif model:IsA("BasePart") then
                 model.CFrame = rot
             elseif model:IsA("Tool") then
-                local handle = model:FindFirstChild("Handle")
-                if handle then
-                    local offset = handle.CFrame - handle.Position
-                    handle.CFrame = rot * offset
-                end
+                model:PivotTo(rot)
             end
         end)
     end
@@ -3368,8 +3169,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.01)
     setSliderKnob(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
-    setSliderKnob(maskRotSliderBg, maskRotFill, maskRotKnob, rotationSpeed, 0.001, 0.01)
-    setSliderKnob(maskZoomSliderBg, maskZoomFill, maskZoomKnob, maskZoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
 
     local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
         local dragging = false
@@ -3401,10 +3200,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
     end
 
     bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.01, function(v)
-        rotationSpeed = v
-        if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
-    end)
-    bindSlider(maskRotSliderBg, maskRotFill, maskRotKnob, 0.001, 0.01, function(v)
         rotationSpeed = v
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
@@ -3493,14 +3288,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
         viewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
     end
 
-    local function updateMaskPreviewCamera()
-        if not maskPreviewModel then return end
-        local cf, size = getPreviewBounds(maskPreviewModel)
-        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.5 / maskZoomMultiplier)
-        maskViewport.CurrentCamera = maskViewport.CurrentCamera or Instance.new("Camera")
-        maskViewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
-    end
-
     attachPreviewInput(viewportHolder, function(wheelDelta)
         zoomMultiplier = applyScrollZoom(zoomMultiplier, wheelDelta)
         syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier)
@@ -3515,36 +3302,15 @@ function Library:_BuildSkinChangerPage(page, cfg)
         updatePreviewCamera()
     end)
 
-    attachPreviewInput(maskViewportHolder, function(wheelDelta)
-        maskZoomMultiplier = applyScrollZoom(maskZoomMultiplier, wheelDelta)
-        syncZoomSlider(maskZoomSliderBg, maskZoomFill, maskZoomKnob, maskZoomMultiplier)
-        updateMaskPreviewCamera()
-        if cfg.OnMaskZoomChanged then
-            cfg.OnMaskZoomChanged(maskZoomMultiplier)
-        end
-    end, function(deltaX, deltaY)
-        maskPreviewYaw = maskPreviewYaw + deltaX * 0.012
-        maskPreviewPitch = math.clamp(maskPreviewPitch + deltaY * 0.012, -1.4, 1.4)
-        applyPreviewRotation(maskPreviewModel, maskPreviewYaw + maskPreviewAngle, maskPreviewPitch)
-        updateMaskPreviewCamera()
-    end)
-
     bindSlider(zoomSliderBg, zoomFill, zoomKnob, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
         zoomMultiplier = v
         updatePreviewCamera()
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
     end)
-    bindSlider(maskZoomSliderBg, maskZoomFill, maskZoomKnob, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
-        maskZoomMultiplier = v
-        updateMaskPreviewCamera()
-        if cfg.OnMaskZoomChanged then cfg.OnMaskZoomChanged(v) end
-    end)
 
     local SkinPage = {
         _worldModel = worldModel,
         _viewport = viewport,
-        _maskWorldModel = maskWorldModel,
-        _maskViewport = maskViewport,
     }
 
     function SkinPage:SetWeaponList(items, selected)
@@ -3586,6 +3352,11 @@ function Library:_BuildSkinChangerPage(page, cfg)
             if primary then
                 model:PivotTo(CFrame.new())
             end
+        elseif model:IsA("Tool") then
+            local handle = model:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                model:PivotTo(CFrame.new())
+            end
         elseif model:IsA("BasePart") then
             model.CFrame = CFrame.new()
         end
@@ -3604,95 +3375,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end)
     end
 
-    function SkinPage:SetMaskList(items, selected)
-        populateList(maskList, items, maskButtons, selected, maskFilter, function(name, btn)
-            if selectedMaskBtn then
-                selectedMaskBtn.TextColor3 = Library.Theme.Text
-            end
-            selectedMaskBtn = btn
-            btn.TextColor3 = Library.Theme.Accent
-            if cfg.OnMaskSelected then cfg.OnMaskSelected(name) end
-        end)
-    end
-
-    function SkinPage:SetMaskPreviewModel(model)
-        for _, child in ipairs(maskWorldModel:GetChildren()) do
-            child:Destroy()
-        end
-        maskPreviewModel = nil
-        if maskPreviewConn then
-            maskPreviewConn:Disconnect()
-            maskPreviewConn = nil
-        end
-        if not model then return end
-        maskPreviewModel = model
-        model.Parent = maskWorldModel
-        if model:IsA("Model") then
-            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-            if primary then
-                model:PivotTo(CFrame.new())
-            end
-        elseif model:IsA("BasePart") then
-            model.CFrame = CFrame.new()
-        end
-        updateMaskPreviewCamera()
-        maskPreviewAngle = 0
-        maskPreviewYaw = 0
-        maskPreviewPitch = 0
-        maskPreviewConn = Connect(RunService.RenderStepped, function(dt)
-            if maskAutoRotate and maskPreviewModel and maskPreviewModel.Parent then
-                maskPreviewAngle = maskPreviewAngle + dt * (rotationSpeed * 1000)
-            end
-            if maskPreviewModel and maskPreviewModel.Parent then
-                applyPreviewRotation(maskPreviewModel, maskPreviewYaw + maskPreviewAngle, maskPreviewPitch)
-                updateMaskPreviewCamera()
-            end
-        end)
-    end
-
-    function SkinPage:SetActiveTab(tabId)
-        activeTabId = tabId
-        for id, b in pairs(subTabButtons) do
-            b.TextColor3 = id == tabId and Library.Theme.Accent or Library.Theme.DarkText
-        end
-        mainBody.Visible = tabId == "guns"
-        miscBody.Visible = tabId == "mask"
-    end
-
-    function SkinPage:SetMaskEnabled(state)
-        maskEnableMark.Visible = state == true
-    end
-
     function SkinPage:SetEnabled(state)
         enableMark.Visible = state == true
-    end
-
-    local defaultSubTabs = {
-        { Name = "guns/knife", Id = "guns" },
-        { Name = "mask", Id = "mask" },
-    }
-    local subTabs = cfg.SubTabs or defaultSubTabs
-    for i, subTab in ipairs(subTabs) do
-        local subName = type(subTab) == "table" and subTab.Name or subTab
-        local subId = type(subTab) == "table" and (subTab.Id or subTab.Name) or subTab
-        local subBtn = New("TextButton", {
-            Parent = subNav,
-            BackgroundTransparency = 1,
-            AutoButtonColor = false,
-            Size = UDim2.fromOffset(math.max(60, #subName * 7), 24),
-            Font = self.FontBold,
-            Text = subName,
-            TextSize = 13,
-            TextColor3 = i == 1 and self.Theme.Accent or self.Theme.DarkText,
-            LayoutOrder = i,
-        })
-        subTabButtons[subId] = subBtn
-        Connect(subBtn.MouseButton1Click, function()
-            SkinPage:SetActiveTab(subId)
-            if cfg.OnActiveTabChanged then
-                cfg.OnActiveTabChanged(subId)
-            end
-        end)
     end
 
     Connect(enableBox.MouseButton1Click, function()
@@ -3704,17 +3388,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
         autoRotateMark.Visible = not autoRotateMark.Visible
         autoRotate = autoRotateMark.Visible
         if cfg.OnAutoRotateChanged then cfg.OnAutoRotateChanged(autoRotate) end
-    end)
-
-    Connect(maskEnableBox.MouseButton1Click, function()
-        maskEnableMark.Visible = not maskEnableMark.Visible
-        if cfg.OnMaskEnabledChanged then cfg.OnMaskEnabledChanged(maskEnableMark.Visible) end
-    end)
-
-    Connect(maskAutoRotateBox.MouseButton1Click, function()
-        maskAutoRotateMark.Visible = not maskAutoRotateMark.Visible
-        maskAutoRotate = maskAutoRotateMark.Visible
-        if cfg.OnAutoRotateChanged then cfg.OnAutoRotateChanged(maskAutoRotate) end
     end)
 
     Connect(weaponSearch:GetPropertyChangedSignal("Text"), function()
@@ -3753,26 +3426,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         if cfg._refreshSkins then cfg._refreshSkins() end
     end)
 
-    Connect(maskSearch:GetPropertyChangedSignal("Text"), function()
-        maskFilter = maskSearch.Text
-        if cfg.OnMaskSearch then
-            cfg.OnMaskSearch(maskFilter)
-        elseif cfg._refreshMasks then
-            cfg._refreshMasks()
-        end
-    end)
-    Connect(maskSearchBtn.MouseButton1Click, function()
-        maskFilter = maskSearch.Text
-        if cfg._refreshMasks then cfg._refreshMasks() end
-    end)
-    Connect(maskClearBtn.MouseButton1Click, function()
-        maskSearch.Text = ""
-        maskFilter = ""
-        if cfg._refreshMasks then cfg._refreshMasks() end
-    end)
-
     SkinPage._cfg = cfg
-    SkinPage:SetActiveTab(activeTabId)
     return SkinPage
 end
 
