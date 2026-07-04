@@ -3437,7 +3437,7 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         Name = "EspPreviewRoot",
         Parent = parent,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 360),
+        Size = UDim2.new(1, 0, 0, 380),
     })
 
     local viewportHolder = New("Frame", {
@@ -3445,7 +3445,7 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         BackgroundColor3 = self.Theme.Inline,
         BorderSizePixel = 0,
         Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.new(1, 0, 1, -92),
+        Size = UDim2.new(1, 0, 1, -108),
     })
     Corner(4, viewportHolder)
     self:AddToRegistry(viewportHolder, "BackgroundColor3", "Inline")
@@ -3475,14 +3475,39 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     local previewControls = New("Frame", {
         Parent = root,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 0, 1, -84),
-        Size = UDim2.new(1, 0, 0, 84),
+        Position = UDim2.new(0, 0, 1, -108),
+        Size = UDim2.new(1, 0, 0, 108),
     })
     New("UIListLayout", {
         Parent = previewControls,
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 6),
     })
+
+    local refreshRow = New("Frame", {
+        Parent = previewControls,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 24),
+        LayoutOrder = 0,
+    })
+    local refreshBtn = New("TextButton", {
+        Parent = refreshRow,
+        BackgroundColor3 = self.Theme.Inline,
+        AutoButtonColor = false,
+        Size = UDim2.fromOffset(72, 24),
+        Position = UDim2.new(1, -72, 0, 0),
+        Font = self.Font,
+        Text = "refresh",
+        TextSize = 12,
+        TextColor3 = self.Theme.Text,
+    })
+    Corner(4, refreshBtn)
+    self:AddToRegistry(refreshBtn, "BackgroundColor3", "Inline")
+    Connect(refreshBtn.MouseButton1Click, function()
+        if cfg.OnRefresh then
+            cfg.OnRefresh()
+        end
+    end)
 
     local autoRotateRow = New("Frame", {
         Parent = previewControls,
@@ -3521,24 +3546,35 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         TextXAlignment = Enum.TextXAlignment.Left,
     })
 
-    local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
+    local function setSliderKnob(sliderBg, knob, value, minV, maxV)
         local alpha = (value - minV) / (maxV - minV)
         alpha = math.clamp(alpha, 0, 1)
         local trackPad = 8
-        fill.Position = UDim2.fromOffset(trackPad, 18)
-        fill.Size = UDim2.new(alpha, -trackPad, 0, 4)
         knob.AnchorPoint = Vector2.new(0.5, 0.5)
-        knob.Position = UDim2.new(alpha, trackPad, 0, 18)
+        knob.Position = UDim2.new(alpha, trackPad - alpha * (trackPad * 2), 0, 18)
     end
 
-    local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
+    local function bindSlider(sliderBg, fill, knob, trackHit, minV, maxV, onChange)
         local dragging = false
-        Connect(knob.InputBegan, function(input)
+
+        local function setFromInput(input)
+            local rel = sliderBg.AbsolutePosition.X
+            local width = math.max(sliderBg.AbsoluteSize.X - 16, 1)
+            local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
+            local value = minV + (maxV - minV) * alpha
+            onChange(value)
+        end
+
+        local function beginDrag(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
+                setFromInput(input)
             end
-        end)
+        end
+
+        Connect(knob.InputBegan, beginDrag)
+        Connect(trackHit.InputBegan, beginDrag)
         Connect(UserInputService.InputEnded, function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -3551,12 +3587,7 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             and input.UserInputType ~= Enum.UserInputType.Touch then
                 return
             end
-            local rel = sliderBg.AbsolutePosition.X
-            local width = sliderBg.AbsoluteSize.X - 16
-            local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
-            local value = minV + (maxV - minV) * alpha
-            onChange(value)
-            setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
+            setFromInput(input)
         end)
     end
 
@@ -3580,24 +3611,52 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             TextColor3 = self.Theme.DarkText,
             TextXAlignment = Enum.TextXAlignment.Left,
         })
-        local fill = New("Frame", {
+        local trackRail = New("Frame", {
             Parent = sliderBg,
+            BackgroundColor3 = self.Theme.Border,
+            BorderSizePixel = 0,
+            Position = UDim2.new(0, 8, 0, 18),
+            Size = UDim2.new(1, -16, 0, 4),
+        })
+        Corner(2, trackRail)
+        local fill = New("Frame", {
+            Parent = trackRail,
             BackgroundColor3 = self.Theme.Accent,
             BorderSizePixel = 0,
-            Size = UDim2.new(0, 0, 0, 4),
+            Size = UDim2.fromScale(0, 1),
         })
         Corner(2, fill)
+        local trackHit = New("TextButton", {
+            Parent = sliderBg,
+            BackgroundTransparency = 1,
+            AutoButtonColor = false,
+            Text = "",
+            Position = UDim2.new(0, 8, 0, 14),
+            Size = UDim2.new(1, -16, 0, 14),
+            ZIndex = 2,
+        })
         local knob = New("TextButton", {
             Parent = sliderBg,
             BackgroundColor3 = self.Theme.LightText,
             AutoButtonColor = false,
             Text = "",
             Size = UDim2.fromOffset(10, 10),
+            ZIndex = 3,
         })
         Corner(5, knob)
-        setSliderKnob(sliderBg, fill, knob, defaultValue, minV, maxV)
-        bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
-        return sliderBg, fill, knob
+
+        local function syncFill(value)
+            local alpha = math.clamp((value - minV) / (maxV - minV), 0, 1)
+            fill.Size = UDim2.fromScale(alpha, 1)
+            setSliderKnob(sliderBg, knob, value, minV, maxV)
+        end
+
+        syncFill(defaultValue)
+        bindSlider(sliderBg, fill, knob, trackHit, minV, maxV, function(v)
+            onChange(v)
+            syncFill(v)
+        end)
+        return sliderBg, fill, knob, syncFill
     end
 
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
@@ -3607,48 +3666,44 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     local previewYaw = 0
     local previewPitch = 0
     local previewAngle = 0
+    local startPivot = CFrame.new()
     local previewConn = nil
-    local ZOOM_MIN = 0.001
-    local SLIDER_ZOOM_MIN = 0.01
-    local SLIDER_ZOOM_MAX = 100
+    local ZOOM_MIN = 0.05
+    local SLIDER_ZOOM_MIN = 0.05
+    local SLIDER_ZOOM_MAX = 2
 
-    local rotSliderBg, rotFill, rotKnob = makeSlider(previewControls, "rotation speed", 2, rotationSpeed, 0.001, 0.01, function(v)
+    local rotSliderBg, rotFill, rotKnob, syncRotSlider = makeSlider(previewControls, "rotation speed", 2, rotationSpeed, 0.001, 0.01, function(v)
         rotationSpeed = v
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
-    local zoomSliderBg, zoomFill, zoomKnob = makeSlider(previewControls, "zoom", 3, math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX), SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
-        zoomMultiplier = v
-        if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
-    end)
-
-    local function getPreviewBounds(model)
-        if model:IsA("Model") and model.GetBoundingBox then
-            local ok, cf, size = pcall(function()
-                return model:GetBoundingBox()
-            end)
-            if ok and cf then
-                return cf, size
-            end
-        end
-        return CFrame.new(), Vector3.new(4, 6, 2)
-    end
 
     local function updatePreviewCamera()
-        if not previewModel then return end
-        local cf, size = getPreviewBounds(previewModel)
-        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.2 / zoomMultiplier)
-        previewCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.25, dist), cf.Position)
+        if not previewModel or not previewModel.Parent then
+            return
+        end
+
+        local ok, bboxCF, bboxSize = pcall(function()
+            return previewModel:GetBoundingBox()
+        end)
+        if not ok or not bboxCF then
+            return
+        end
+
+        local maxDim = math.max(bboxSize.X, bboxSize.Y, bboxSize.Z)
+        local camDistance = math.max(6, maxDim * 1.8) / math.max(zoomMultiplier, ZOOM_MIN)
+        local lookAt = bboxCF.Position + Vector3.new(0, bboxSize.Y * 0.15, 0)
+
+        previewCamera.CFrame = CFrame.lookAt(
+            lookAt + Vector3.new(0, 0, camDistance),
+            lookAt
+        )
     end
 
-    local function applyPreviewRotation(model, yaw, pitch)
-        if not model then return end
-        local rot = CFrame.Angles(pitch, yaw, 0)
-        pcall(function()
-            if model:IsA("Model") then
-                model:PivotTo(rot)
-            end
-        end)
-    end
+    local zoomSliderBg, zoomFill, zoomKnob, syncZoomSlider = makeSlider(previewControls, "zoom", 3, math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX), SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
+        zoomMultiplier = v
+        if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
+        updatePreviewCamera()
+    end)
 
     local catcher = New("TextButton", {
         Parent = viewportHolder,
@@ -3678,15 +3733,8 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     Connect(catcher.InputChanged, function(input)
         if input.UserInputType == Enum.UserInputType.MouseWheel then
             local factor = 1.15 ^ input.Position.Z
-            zoomMultiplier = math.max(ZOOM_MIN, zoomMultiplier * factor)
-            setSliderKnob(
-                zoomSliderBg,
-                zoomFill,
-                zoomKnob,
-                math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX),
-                SLIDER_ZOOM_MIN,
-                SLIDER_ZOOM_MAX
-            )
+            zoomMultiplier = math.clamp(zoomMultiplier * factor, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
+            syncZoomSlider(zoomMultiplier)
             updatePreviewCamera()
             if cfg.OnZoomChanged then cfg.OnZoomChanged(zoomMultiplier) end
             return
@@ -3700,7 +3748,9 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             local delta = input.Position - lastPos
             previewYaw = previewYaw + delta.X * 0.012
             previewPitch = math.clamp(previewPitch + delta.Y * 0.012, -1.2, 1.2)
-            applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
+            if previewModel and previewModel.Parent then
+                previewModel:PivotTo(startPivot * CFrame.Angles(previewPitch, previewYaw + previewAngle, 0))
+            end
             updatePreviewCamera()
         end
         lastPos = input.Position
@@ -3728,34 +3778,49 @@ function Library:_BuildEspPreviewInto(parent, cfg)
             previewConn:Disconnect()
             previewConn = nil
         end
-        if not model then return end
+        if not model then
+            return
+        end
+
         previewModel = model
         model.Parent = worldModel
-        if model:IsA("Model") then
-            model:PivotTo(CFrame.new())
-        end
-        updatePreviewCamera()
         previewAngle = 0
         previewYaw = 0
         previewPitch = 0
-        previewConn = Connect(RunService.RenderStepped, function(dt)
-            if autoRotate and previewModel and previewModel.Parent then
-                previewAngle = previewAngle + dt * (rotationSpeed * 1000)
+
+        task.spawn(function()
+            task.wait()
+
+            if not previewModel or previewModel ~= model or not model.Parent then
+                return
             end
-            if previewModel and previewModel.Parent then
-                applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
-                updatePreviewCamera()
-            end
-            local vpSize = viewport.AbsoluteSize
-            local fov = previewCamera.FieldOfView
-            if getgenv().Esp then
-                getgenv().Esp.Preview.RenderContext = {
-                    Camera = previewCamera,
-                    Viewport = viewport,
-                    ViewportSizeY = vpSize.Y,
-                    FocalLength = vpSize.Y / (2 * math.tan(math.rad(fov) * 0.5)),
-                }
-            end
+
+            startPivot = model:GetPivot()
+            updatePreviewCamera()
+
+            previewConn = Connect(RunService.RenderStepped, function(dt)
+                if not previewModel or not previewModel.Parent then
+                    return
+                end
+
+                if autoRotate then
+                    local speedScale = rotationSpeed / 0.002
+                    previewAngle = previewAngle + dt * math.rad(30) * speedScale
+                end
+
+                previewModel:PivotTo(startPivot * CFrame.Angles(previewPitch, previewYaw + previewAngle, 0))
+
+                local vpSize = viewport.AbsoluteSize
+                local fov = previewCamera.FieldOfView
+                if getgenv().Esp then
+                    getgenv().Esp.Preview.RenderContext = {
+                        Camera = previewCamera,
+                        Viewport = viewport,
+                        ViewportSizeY = vpSize.Y,
+                        FocalLength = vpSize.Y / (2 * math.tan(math.rad(fov) * 0.5)),
+                    }
+                end
+            end)
         end)
     end
 
