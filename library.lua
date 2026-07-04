@@ -1356,6 +1356,11 @@ function Library:_UpdateWatermark()
     self.WatermarkLabel.Text = string.format("%s  |  %d fps  |  %d ms", self.WatermarkText or "void", fps, ping)
 end
 
+local function resolveIgnoreConfig(info)
+    if info and info.IgnoreConfig ~= nil then return info.IgnoreConfig end
+    return Library._ignoreConfig
+end
+
 function Library:_BuildSection(container)
     local Section = { Container = container }
 
@@ -1506,7 +1511,7 @@ function Library:_BuildSection(container)
             Instance = box,
             AddonHolder = holder,
             Id = id,
-            IgnoreConfig = Library._ignoreConfig,
+            IgnoreConfig = resolveIgnoreConfig(info),
         }
         function Toggle:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
         function Toggle:_fire()
@@ -1527,7 +1532,9 @@ function Library:_BuildSection(container)
         function Toggle:AddKeyPicker(kid, kinfo)
             kinfo = kinfo or {}
             if kinfo.SyncToggleState then kinfo._toggle = Toggle end
-            return Library:_KeyPicker(holder, kid, kinfo)
+            local kp = Library:_KeyPicker(holder, kid, kinfo)
+            kp._linkedToggle = Toggle
+            return kp
         end
 
         Toggle:SetValue(Toggle.Value)
@@ -1570,7 +1577,7 @@ function Library:_BuildSection(container)
             })
             Library:AddToRegistry(fill, "BackgroundColor3", "Accent")
             Corner(2, fill)
-            local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = sid, IgnoreConfig = Library._ignoreConfig }
+            local Slider = { Value = default, Callbacks = {}, Type = "Slider", Id = sid, IgnoreConfig = resolveIgnoreConfig(sinfo) }
             function Slider:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
             local function round(v)
                 if rounding <= 0 then return math.floor(v + 0.5) end
@@ -1659,7 +1666,7 @@ function Library:_BuildSection(container)
             ClipsDescendants = true,
         })
         Library:AddToRegistry(textBox, "TextColor3", "LightText")
-        local Input = { Value = info.Default or "", Callbacks = {}, Type = "Input", Id = id, IgnoreConfig = Library._ignoreConfig }
+        local Input = { Value = info.Default or "", Callbacks = {}, Type = "Input", Id = id, IgnoreConfig = resolveIgnoreConfig(info) }
         function Input:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
         function Input:SetValue(v)
             textBox.Text = tostring(v)
@@ -1808,7 +1815,7 @@ function Library:_Dropdown(container, id, info)
         ScrollBarThickness = 2, ZIndex = 51,
     })
     New("UIListLayout", { Parent = scroller, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
-    local Dropdown = { Value = multi and {} or nil, Values = values, Callbacks = {}, Type = "Dropdown", Id = id, IgnoreConfig = Library._ignoreConfig }
+    local Dropdown = { Value = multi and {} or nil, Values = values, Callbacks = {}, Type = "Dropdown", Id = id, IgnoreConfig = resolveIgnoreConfig(info) }
     if info.Default ~= nil then
         Dropdown.Value = resolveDropdownDefault(values, info.Default, multi)
     end
@@ -1933,11 +1940,18 @@ function Library:_KeyPicker(holder, id, info)
     local KeyPicker = {
         Value = current, Mode = info.Mode or "Toggle", State = false,
         Callbacks = {}, Type = "KeyPicker", Id = id, Text = info.Text or id,
-        IgnoreConfig = Library._ignoreConfig,
+        IgnoreConfig = resolveIgnoreConfig(info),
     }
     function KeyPicker:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
     function KeyPicker:OnClick(fn) self._click = type(fn) == "function" and fn or nil return self end
     function KeyPicker:GetState() return self.State end
+    function KeyPicker:SetMode(mode)
+        if mode == "Always" or mode == "Toggle" or mode == "Hold" then
+            self.Mode = mode
+            Library:_UpdateKeybindList()
+        end
+        return self
+    end
     function KeyPicker:SetValue(key)
         key = normalizeKeybind(key)
         self.Value = key
@@ -2092,7 +2106,7 @@ function Library:_ColorPicker(holder, id, info)
     })
     Corner(8, swatch)
     Library:AddToRegistry(Stroke(swatch, Library.Theme.Border, 1, 0), "Color", "Border")
-    local ColorPicker = { Value = color, Transparency = transparency, Callbacks = {}, Type = "ColorPicker", Id = id, IgnoreConfig = Library._ignoreConfig }
+    local ColorPicker = { Value = color, Transparency = transparency, Callbacks = {}, Type = "ColorPicker", Id = id, IgnoreConfig = resolveIgnoreConfig(info) }
     function ColorPicker:OnChanged(fn) pushCallback(self.Callbacks, fn) return self end
     local h, s, v = Color3.toHSV(color)
     local popup = New("Frame", {
@@ -2306,7 +2320,7 @@ local function serializeValue(opt)
         end
         return { __t = "dropdown", value = opt.Value }
     elseif opt.Type == "KeyPicker" then
-        return { __t = "key", value = opt.Value }
+        return { __t = "key", value = opt.Value, mode = opt.Mode }
     else
         return { __t = "value", value = opt.Value }
     end
@@ -2325,32 +2339,50 @@ end
 
 function Library:ApplyConfigData(data)
     if not data then return end
+    self._applyingConfig = true
+    local keyEntries = {}
+    for id, ser in pairs(data.options or {}) do
+        if ser.__t == "key" then
+            keyEntries[id] = ser
+        else
+            local opt = self.Options[id]
+            if opt and type(opt.SetValue) == "function" then
+                pcall(function()
+                    if ser.__t == "color" then
+                        opt:SetValue(Color3.fromHex(ser.hex), ser.transparency)
+                    elseif ser.__t == "multidropdown" then
+                        local t = {}
+                        for _, v in ipairs(ser.values) do t[v] = true end
+                        opt:SetValue(t)
+                    elseif ser.__t == "dropdown" then
+                        opt:SetValue(ser.value)
+                    else
+                        opt:SetValue(ser.value)
+                    end
+                end)
+            end
+        end
+    end
     for id, val in pairs(data.toggles or {}) do
         local toggle = self.Toggles[id]
         if toggle and type(toggle.SetValue) == "function" then
-            pcall(function() toggle:SetValue(val) end)
+            pcall(function() toggle:SetValue(val == true) end)
         end
     end
-    for id, ser in pairs(data.options or {}) do
+    for id, ser in pairs(keyEntries) do
         local opt = self.Options[id]
-        if opt and type(opt.SetValue) == "function" then
+        if opt and opt.Type == "KeyPicker" then
             pcall(function()
-                if ser.__t == "color" then
-                    opt:SetValue(Color3.fromHex(ser.hex), ser.transparency)
-                elseif ser.__t == "multidropdown" then
-                    local t = {}
-                    for _, v in ipairs(ser.values) do t[v] = true end
-                    opt:SetValue(t)
-                elseif ser.__t == "dropdown" then
-                    opt:SetValue(ser.value)
-                elseif ser.__t == "key" then
-                    opt:SetValue(ser.value)
-                else
-                    opt:SetValue(ser.value)
+                if ser.mode then opt:SetMode(ser.mode) end
+                opt:SetValue(ser.value)
+                if opt._linkedToggle then
+                    opt.State = opt._linkedToggle.Value == true
                 end
             end)
         end
     end
+    self._applyingConfig = false
+    self:_UpdateKeybindList()
 end
 
 function Library:SaveConfig(name)
@@ -2538,8 +2570,9 @@ function Library:BuildSettingsTab(tab)
         local n = listDropdown.Value
         if n and n ~= "no configs" then self:SetAutoload(n); self:Notify("autoload set: " .. n) end
     end })
-    local autoLabel = cfgBox:AddLabel("current autoload: " .. (self:GetAutoload() or "none"))
+    cfgBox:AddLabel("current autoload: " .. (self:GetAutoload() or "none"))
 
+    self._ignoreConfig = false
     local themeBox = tab:AddRightGroupbox("theme", "customize colors")
     local wm = themeBox:AddToggle("watermark", { Text = "watermark", Default = false, Callback = function(v)
         self:SetWatermarkVisible(v)
@@ -2585,6 +2618,7 @@ function Library:BuildSettingsTab(tab)
         end,
     })
 
+    self._ignoreConfig = true
     self.SyncTheme = {}
     local themeOrder = {
         { "dark background", "DarkBackground" },
@@ -2601,7 +2635,7 @@ function Library:BuildSettingsTab(tab)
     for _, pair in ipairs(themeOrder) do
         local label, key = pair[1], pair[2]
         local cp = themeBox:AddColorPicker("themecol_" .. key, {
-            Title = label, Default = self.Theme[key],
+            Title = label, Default = self.Theme[key], IgnoreConfig = true,
             Callback = function(col) self:SetTheme(key, col) end,
         })
         self.SyncTheme[key] = cp
@@ -2620,6 +2654,7 @@ function Library:BuildSettingsTab(tab)
         if n and n ~= "no themes" then self:LoadTheme(n) end
     end })
 
+    self._ignoreConfig = true
     local panel = tab:AddRightGroupbox("game panel", "usefull utilities")
     panel:AddButton({ Text = "copy jobid", Func = function() self:CopyJobId() end })
     panel:AddButton({ Text = "copy gameid", Func = function() self:CopyGameId() end })
@@ -2631,6 +2666,7 @@ function Library:BuildSettingsTab(tab)
         self:ServerHop(minSlider.Value, maxSlider.Value)
     end })
 
+    self._ignoreConfig = false
     local uiBox = tab:AddLeftGroupbox("ui settings", "interface")
     self:CreateKeybindList()
     uiBox:AddToggle("keybind_list", { Text = "show keybind list", Default = true, Callback = function(v)
@@ -2644,6 +2680,7 @@ function Library:BuildSettingsTab(tab)
     uiBox:AddSlider("ui_scale", { Text = "ui scale", Min = 50, Max = 130, Default = self.IsMobile and 60 or 100, Suffix = "%", Callback = function(v)
         if self.UIScale then self.UIScale.Scale = v / 100 end
     end })
+    self._ignoreConfig = true
     uiBox:AddButton({ Text = "unload", Func = function() self:Unload() end })
 
     self._ignoreConfig = false
