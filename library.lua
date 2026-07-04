@@ -2706,33 +2706,15 @@ function Library:_BuildSkinChangerPage(page, cfg)
         Parent = page,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 1, 0),
-    })
-
-    local sidebar = New("Frame", {
-        Name = "CategorySidebar",
-        Parent = root,
-        BackgroundColor3 = self.Theme.SectionBackground,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 72, 1, 0),
-    })
-    self:AddToRegistry(sidebar, "BackgroundColor3", "SectionBackground")
-    Corner(5, sidebar)
-    self:AddToRegistry(Stroke(sidebar, self.Theme.Border, 1, 0), "Color", "Border")
-    Padding(sidebar, 8)
-
-    New("UIListLayout", {
-        Parent = sidebar,
-        FillDirection = Enum.FillDirection.Vertical,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 6),
+        ZIndex = 2,
     })
 
     local body = New("Frame", {
         Name = "Body",
         Parent = root,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(80, 0),
-        Size = UDim2.new(1, -80, 1, 0),
+        Size = UDim2.new(1, 0, 1, 0),
+        ZIndex = 2,
     })
 
     local subNav = New("Frame", {
@@ -2924,6 +2906,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             ScrollBarThickness = 2,
             ScrollBarImageColor3 = self.Theme.Accent,
+            Active = true,
+            ZIndex = 3,
         })
         Corner(4, list)
         self:AddToRegistry(list, "BackgroundColor3", "Inline")
@@ -3103,7 +3087,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
         TextYAlignment = Enum.TextYAlignment.Center,
     })
 
-    local categoryButtons = {}
     local subTabButtons = {}
     local weaponButtons = {}
     local skinButtons = {}
@@ -3188,6 +3171,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     TextSize = 12,
                     TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
                     LayoutOrder = i,
+                    ZIndex = 4,
                 })
                 Corner(3, btn)
                 table.insert(buttons, btn)
@@ -3198,10 +3182,53 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end
     end
 
+    local function getPreviewBounds(model)
+        if model:IsA("BasePart") then
+            return model.CFrame, model.Size
+        end
+
+        if model:IsA("Model") and model.GetBoundingBox then
+            local ok, cf, size = pcall(function()
+                return model:GetBoundingBox()
+            end)
+            if ok and cf then
+                return cf, size
+            end
+        end
+
+        local minV, maxV
+        for _, part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local pos = part.Position
+                if not minV then
+                    minV = pos
+                    maxV = pos
+                else
+                    minV = Vector3.new(
+                        math.min(minV.X, pos.X),
+                        math.min(minV.Y, pos.Y),
+                        math.min(minV.Z, pos.Z)
+                    )
+                    maxV = Vector3.new(
+                        math.max(maxV.X, pos.X),
+                        math.max(maxV.Y, pos.Y),
+                        math.max(maxV.Z, pos.Z)
+                    )
+                end
+            end
+        end
+
+        if minV and maxV then
+            return CFrame.new((minV + maxV) * 0.5), (maxV - minV)
+        end
+
+        return CFrame.new(), Vector3.new(2, 2, 2)
+    end
+
     local function updatePreviewCamera()
         if not previewModel then return end
-        local cf, size = previewModel:GetBoundingBox()
-        local dist = math.max(size.X, size.Y, size.Z) * (2.5 / zoomMultiplier)
+        local cf, size = getPreviewBounds(previewModel)
+        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.5 / zoomMultiplier)
         viewport.CurrentCamera = viewport.CurrentCamera or Instance.new("Camera")
         viewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
     end
@@ -3258,65 +3285,21 @@ function Library:_BuildSkinChangerPage(page, cfg)
         previewConn = Connect(RunService.RenderStepped, function(dt)
             if not autoRotate or not previewModel or not previewModel.Parent then return end
             previewAngle = previewAngle + dt * (rotationSpeed * 1000)
-            if previewModel:IsA("Model") then
-                previewModel:PivotTo(CFrame.Angles(0, previewAngle, 0))
-            elseif previewModel:IsA("BasePart") then
-                previewModel.CFrame = CFrame.Angles(0, previewAngle, 0)
-            end
+            pcall(function()
+                if previewModel:IsA("Model") then
+                    previewModel:PivotTo(CFrame.Angles(0, previewAngle, 0))
+                elseif previewModel:IsA("BasePart") then
+                    previewModel.CFrame = CFrame.Angles(0, previewAngle, 0)
+                elseif previewModel:IsA("Tool") then
+                    local handle = previewModel:FindFirstChild("Handle")
+                    if handle then
+                        local offset = handle.CFrame - handle.Position
+                        handle.CFrame = CFrame.Angles(0, previewAngle, 0) * offset
+                    end
+                end
+            end)
             updatePreviewCamera()
         end)
-    end
-
-    function SkinPage:SetCategoryCount(category, count)
-        local btn = categoryButtons[category]
-        if btn and btn._countLabel then
-            btn._countLabel.Text = tostring(count or 0)
-        end
-    end
-
-    local categories = cfg.Categories or { "skins", "mask", "model" }
-    for i, cat in ipairs(categories) do
-        local catBtn = New("TextButton", {
-            Parent = sidebar,
-            BackgroundColor3 = self.Theme.Inline,
-            AutoButtonColor = false,
-            Size = UDim2.new(1, 0, 0, 52),
-            Text = "",
-            LayoutOrder = i,
-        })
-        Corner(4, catBtn)
-        self:AddToRegistry(catBtn, "BackgroundColor3", "Inline")
-        New("TextLabel", {
-            Parent = catBtn,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 16),
-            Position = UDim2.fromOffset(0, 8),
-            Font = self.FontBold,
-            Text = cat,
-            TextSize = 11,
-            TextColor3 = self.Theme.Text,
-        })
-        local countLabel = New("TextLabel", {
-            Parent = catBtn,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 14),
-            Position = UDim2.fromOffset(0, 28),
-            Font = self.Font,
-            Text = "0",
-            TextSize = 11,
-            TextColor3 = self.Theme.DarkText,
-        })
-        catBtn._countLabel = countLabel
-        categoryButtons[cat] = catBtn
-        Connect(catBtn.MouseButton1Click, function()
-            for name, b in pairs(categoryButtons) do
-                b.BackgroundColor3 = name == cat and self.Theme.SectionBackground or self.Theme.Inline
-            end
-            if cfg.OnCategoryChanged then cfg.OnCategoryChanged(cat) end
-        end)
-        if i == 1 then
-            catBtn.BackgroundColor3 = self.Theme.SectionBackground
-        end
     end
 
     local subTabs = cfg.SubTabs or { "main", "misc" }
@@ -3391,13 +3374,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     SkinPage._cfg = cfg
     return SkinPage
-end
-
-function Library:LoadAutoload()
-    local name = self:GetAutoload()
-    if name and name ~= "" then
-        task.spawn(function() self:LoadConfig(name) end)
-    end
 end
 
 function Library:OnUnload(fn)
