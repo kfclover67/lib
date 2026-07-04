@@ -3430,6 +3430,345 @@ function Library:_BuildSkinChangerPage(page, cfg)
     return SkinPage
 end
 
+function Library:_BuildEspPreviewInto(parent, cfg)
+    cfg = cfg or {}
+
+    local root = New("Frame", {
+        Name = "EspPreviewRoot",
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 360),
+    })
+
+    New("TextLabel", {
+        Parent = root,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 16),
+        Font = self.Font,
+        Text = "preview",
+        TextSize = 12,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local viewportHolder = New("Frame", {
+        Parent = root,
+        BackgroundColor3 = self.Theme.Inline,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 20),
+        Size = UDim2.new(1, 0, 1, -108),
+    })
+    Corner(4, viewportHolder)
+    self:AddToRegistry(viewportHolder, "BackgroundColor3", "Inline")
+
+    local viewport = New("ViewportFrame", {
+        Parent = viewportHolder,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        Ambient = Color3.fromRGB(160, 160, 170),
+        LightColor = Color3.fromRGB(255, 255, 255),
+        LightDirection = Vector3.new(-1, -1, -1),
+    })
+
+    local overlay = New("Frame", {
+        Parent = viewportHolder,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        ClipsDescendants = true,
+        ZIndex = 8,
+    })
+
+    local worldModel = New("WorldModel", { Parent = viewport })
+    local previewCamera = Instance.new("Camera")
+    previewCamera.Parent = viewport
+    viewport.CurrentCamera = previewCamera
+
+    local previewControls = New("Frame", {
+        Parent = root,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 0, 1, -84),
+        Size = UDim2.new(1, 0, 0, 84),
+    })
+    New("UIListLayout", {
+        Parent = previewControls,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 6),
+    })
+
+    local autoRotateRow = New("Frame", {
+        Parent = previewControls,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 20),
+        LayoutOrder = 1,
+    })
+    local autoRotateBox = New("TextButton", {
+        Parent = autoRotateRow,
+        BackgroundColor3 = self.Theme.Inline,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromOffset(14, 14),
+        Position = UDim2.fromOffset(0, 3),
+    })
+    Corner(3, autoRotateBox)
+    self:AddToRegistry(Stroke(autoRotateBox, self.Theme.Border, 1, 0), "Color", "Border")
+    local autoRotateMark = New("Frame", {
+        Parent = autoRotateBox,
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(8, 8),
+        Position = UDim2.fromOffset(3, 3),
+        Visible = cfg.DefaultAutoRotate ~= false,
+    })
+    Corner(2, autoRotateMark)
+    New("TextLabel", {
+        Parent = autoRotateRow,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(22, 0),
+        Size = UDim2.new(1, -22, 1, 0),
+        Font = self.Font,
+        Text = "auto rotate",
+        TextSize = 13,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local function makeSlider(parent, label, layoutOrder, defaultAlpha, minV, maxV, onChange)
+        local sliderBg = New("Frame", {
+            Parent = parent,
+            BackgroundColor3 = self.Theme.Inline,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 28),
+            LayoutOrder = layoutOrder,
+        })
+        Corner(4, sliderBg)
+        New("TextLabel", {
+            Parent = sliderBg,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(8, 2),
+            Size = UDim2.new(1, -16, 0, 12),
+            Font = self.Font,
+            Text = label,
+            TextSize = 11,
+            TextColor3 = self.Theme.DarkText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        local fill = New("Frame", {
+            Parent = sliderBg,
+            BackgroundColor3 = self.Theme.Accent,
+            BorderSizePixel = 0,
+            Position = UDim2.fromOffset(8, 18),
+            Size = UDim2.new(defaultAlpha, -8, 0, 4),
+        })
+        Corner(2, fill)
+        local knob = New("TextButton", {
+            Parent = sliderBg,
+            BackgroundColor3 = self.Theme.LightText,
+            AutoButtonColor = false,
+            Text = "",
+            Size = UDim2.fromOffset(10, 10),
+            Position = UDim2.new(defaultAlpha, -5, 0, 15),
+        })
+        Corner(5, knob)
+
+        local dragging = false
+        Connect(knob.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+            end
+        end)
+        Connect(UserInputService.InputEnded, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        Connect(UserInputService.InputChanged, function(input)
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            local rel = sliderBg.AbsolutePosition.X
+            local width = sliderBg.AbsoluteSize.X - 16
+            local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
+            local value = minV + (maxV - minV) * alpha
+            onChange(value)
+            fill.Position = UDim2.fromOffset(8, 18)
+            fill.Size = UDim2.new(alpha, -8, 0, 4)
+            knob.AnchorPoint = Vector2.new(0.5, 0.5)
+            knob.Position = UDim2.new(alpha, 8, 0, 18)
+        end)
+    end
+
+    local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
+    local zoomMultiplier = cfg.DefaultZoom or 0.35
+    local autoRotate = cfg.DefaultAutoRotate ~= false
+    local previewModel = nil
+    local previewYaw = 0
+    local previewPitch = 0
+    local previewAngle = 0
+    local previewConn = nil
+    local ZOOM_MIN = 0.001
+    local SLIDER_ZOOM_MIN = 0.01
+    local SLIDER_ZOOM_MAX = 100
+
+    local rotDefault = (rotationSpeed - 0.001) / (0.01 - 0.001)
+    local zoomDefault = (math.clamp(zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX) - SLIDER_ZOOM_MIN) / (SLIDER_ZOOM_MAX - SLIDER_ZOOM_MIN)
+    makeSlider(previewControls, "rotation speed", 2, rotDefault, 0.001, 0.01, function(v)
+        rotationSpeed = v
+        if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
+    end)
+    makeSlider(previewControls, "zoom", 3, zoomDefault, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
+        zoomMultiplier = v
+        if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
+    end)
+
+    local function getPreviewBounds(model)
+        if model:IsA("Model") and model.GetBoundingBox then
+            local ok, cf, size = pcall(function()
+                return model:GetBoundingBox()
+            end)
+            if ok and cf then
+                return cf, size
+            end
+        end
+        return CFrame.new(), Vector3.new(4, 6, 2)
+    end
+
+    local function updatePreviewCamera()
+        if not previewModel then return end
+        local cf, size = getPreviewBounds(previewModel)
+        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.2 / zoomMultiplier)
+        previewCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.25, dist), cf.Position)
+    end
+
+    local function applyPreviewRotation(model, yaw, pitch)
+        if not model then return end
+        local rot = CFrame.Angles(pitch, yaw, 0)
+        pcall(function()
+            if model:IsA("Model") then
+                model:PivotTo(rot)
+            end
+        end)
+    end
+
+    local catcher = New("TextButton", {
+        Parent = viewportHolder,
+        BackgroundTransparency = 1,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromScale(1, 1),
+        ZIndex = 6,
+    })
+
+    local dragging = false
+    local lastPos = nil
+    Connect(catcher.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            lastPos = input.Position
+        end
+    end)
+    Connect(UserInputService.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            lastPos = nil
+        end
+    end)
+    Connect(catcher.InputChanged, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseWheel then
+            local factor = 1.15 ^ input.Position.Z
+            zoomMultiplier = math.max(ZOOM_MIN, zoomMultiplier * factor)
+            updatePreviewCamera()
+            if cfg.OnZoomChanged then cfg.OnZoomChanged(zoomMultiplier) end
+            return
+        end
+        if not dragging then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        if lastPos then
+            local delta = input.Position - lastPos
+            previewYaw = previewYaw + delta.X * 0.012
+            previewPitch = math.clamp(previewPitch + delta.Y * 0.012, -1.2, 1.2)
+            applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
+            updatePreviewCamera()
+        end
+        lastPos = input.Position
+    end)
+
+    Connect(autoRotateBox.MouseButton1Click, function()
+        autoRotateMark.Visible = not autoRotateMark.Visible
+        autoRotate = autoRotateMark.Visible
+        if cfg.OnAutoRotateChanged then cfg.OnAutoRotateChanged(autoRotate) end
+    end)
+
+    local PreviewPage = {
+        Viewport = viewport,
+        Overlay = overlay,
+        WorldModel = worldModel,
+        Camera = previewCamera,
+    }
+
+    function PreviewPage:SetCharacterModel(model)
+        for _, child in ipairs(worldModel:GetChildren()) do
+            child:Destroy()
+        end
+        previewModel = nil
+        if previewConn then
+            previewConn:Disconnect()
+            previewConn = nil
+        end
+        if not model then return end
+        previewModel = model
+        model.Parent = worldModel
+        if model:IsA("Model") then
+            model:PivotTo(CFrame.new())
+        end
+        updatePreviewCamera()
+        previewAngle = 0
+        previewYaw = 0
+        previewPitch = 0
+        previewConn = Connect(RunService.RenderStepped, function(dt)
+            if autoRotate and previewModel and previewModel.Parent then
+                previewAngle = previewAngle + dt * (rotationSpeed * 1000)
+            end
+            if previewModel and previewModel.Parent then
+                applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
+                updatePreviewCamera()
+            end
+            local vpSize = viewport.AbsoluteSize
+            local fov = previewCamera.FieldOfView
+            if getgenv().Esp then
+                getgenv().Esp.Preview.RenderContext = {
+                    Camera = previewCamera,
+                    Viewport = viewport,
+                    ViewportSizeY = vpSize.Y,
+                    FocalLength = vpSize.Y / (2 * math.tan(math.rad(fov) * 0.5)),
+                }
+            end
+        end)
+    end
+
+    New("TextLabel", {
+        Parent = root,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 0, 1, -18),
+        Size = UDim2.new(1, 0, 0, 14),
+        Font = self.Font,
+        Text = "uses esp settings — show local player not required",
+        TextSize = 11,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    return PreviewPage
+end
+
 function Library:OnUnload(fn)
     if type(fn) == "function" then
         table.insert(self.UnloadCallbacks, fn)
