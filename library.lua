@@ -1182,6 +1182,12 @@ function Library:CreateWindow(cfg)
             return makeSection(side == "right" and right or left, t, sub)
         end
 
+        function Tab:AddSkinChangerPage(cfg)
+            left.Visible = false
+            right.Visible = false
+            return Library:_BuildSkinChangerPage(page, cfg or {})
+        end
+
         table.insert(Window.Tabs, Tab)
         if #Window.Tabs == 1 then select() end
         return Tab
@@ -2685,6 +2691,706 @@ function Library:BuildSettingsTab(tab)
 
     self._ignoreConfig = false
     return tab
+end
+
+function Library:LoadAutoload()
+    local name = self:GetAutoload()
+    if name and name ~= "" then
+        task.spawn(function() self:LoadConfig(name) end)
+    end
+end
+
+function Library:_BuildSkinChangerPage(page, cfg)
+    local root = New("Frame", {
+        Name = "SkinChangerRoot",
+        Parent = page,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+    })
+
+    local sidebar = New("Frame", {
+        Name = "CategorySidebar",
+        Parent = root,
+        BackgroundColor3 = self.Theme.SectionBackground,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 72, 1, 0),
+    })
+    self:AddToRegistry(sidebar, "BackgroundColor3", "SectionBackground")
+    Corner(5, sidebar)
+    self:AddToRegistry(Stroke(sidebar, self.Theme.Border, 1, 0), "Color", "Border")
+    Padding(sidebar, 8)
+
+    New("UIListLayout", {
+        Parent = sidebar,
+        FillDirection = Enum.FillDirection.Vertical,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 6),
+    })
+
+    local body = New("Frame", {
+        Name = "Body",
+        Parent = root,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(80, 0),
+        Size = UDim2.new(1, -80, 1, 0),
+    })
+
+    local subNav = New("Frame", {
+        Name = "SubNav",
+        Parent = body,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 28),
+    })
+    New("UIListLayout", {
+        Parent = subNav,
+        FillDirection = Enum.FillDirection.Horizontal,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 8),
+    })
+
+    local mainBody = New("Frame", {
+        Name = "MainBody",
+        Parent = body,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(0, 34),
+        Size = UDim2.new(1, 0, 1, -34),
+    })
+
+    local miscBody = New("Frame", {
+        Name = "MiscBody",
+        Parent = body,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(0, 34),
+        Size = UDim2.new(1, 0, 1, -34),
+        Visible = false,
+    })
+
+    local function makePanel(parent, title, widthScale, xOffset)
+        local panel = New("Frame", {
+            Parent = parent,
+            BackgroundColor3 = self.Theme.SectionBackground,
+            BorderSizePixel = 0,
+            Position = UDim2.new(widthScale and 0 or 0, xOffset or 0, 0, 0),
+            Size = widthScale and UDim2.new(widthScale, -6, 1, 0) or UDim2.new(1, 0, 1, 0),
+        })
+        self:AddToRegistry(panel, "BackgroundColor3", "SectionBackground")
+        Corner(5, panel)
+        self:AddToRegistry(Stroke(panel, self.Theme.Border, 1, 0), "Color", "Border")
+        Padding(panel, 10)
+
+        local header = New("TextLabel", {
+            Parent = panel,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 18),
+            Font = self.FontBold,
+            Text = title,
+            TextSize = 13,
+            TextColor3 = self.Theme.LightText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        self:AddToRegistry(header, "TextColor3", "LightText")
+
+        local content = New("Frame", {
+            Name = "Content",
+            Parent = panel,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(0, 22),
+            Size = UDim2.new(1, 0, 1, -22),
+        })
+
+        return panel, content
+    end
+
+    local generalPanel, generalContent = makePanel(mainBody, "general", 0.28, 0)
+    local modPanel, modContent = makePanel(mainBody, "weapon modification", 0.28, 0)
+    modPanel.Position = UDim2.new(0.28, 4, 0, 0)
+    local previewPanel, previewContent = makePanel(mainBody, "preview", 0.44, 0)
+    previewPanel.Position = UDim2.new(0.56, 4, 0, 0)
+
+    local enableRow = New("Frame", {
+        Parent = generalContent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 20),
+    })
+    local enableBox = New("TextButton", {
+        Parent = enableRow,
+        BackgroundColor3 = self.Theme.Inline,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromOffset(14, 14),
+        Position = UDim2.fromOffset(0, 3),
+    })
+    Corner(3, enableBox)
+    self:AddToRegistry(Stroke(enableBox, self.Theme.Border, 1, 0), "Color", "Border")
+    local enableMark = New("Frame", {
+        Parent = enableBox,
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(8, 8),
+        Position = UDim2.fromOffset(3, 3),
+        Visible = cfg.DefaultEnabled or false,
+    })
+    Corner(2, enableMark)
+    New("TextLabel", {
+        Parent = enableRow,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(22, 0),
+        Size = UDim2.new(1, -22, 1, 0),
+        Font = self.Font,
+        Text = "enable",
+        TextSize = 13,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local function makeSearchList(parent, labelText, yPos, height)
+        local holder = New("Frame", {
+            Parent = parent,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, yPos),
+            Size = UDim2.new(1, 0, 0, height),
+        })
+
+        New("TextLabel", {
+            Parent = holder,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 16),
+            Font = self.Font,
+            Text = labelText,
+            TextSize = 12,
+            TextColor3 = self.Theme.DarkText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+
+        local searchRow = New("Frame", {
+            Parent = holder,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(0, 18),
+            Size = UDim2.new(1, 0, 0, 24),
+        })
+
+        local searchBox = New("TextBox", {
+            Parent = searchRow,
+            BackgroundColor3 = self.Theme.Inline,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, -88, 1, 0),
+            Font = self.Font,
+            Text = "",
+            PlaceholderText = "search...",
+            TextSize = 12,
+            TextColor3 = self.Theme.LightText,
+            PlaceholderColor3 = self.Theme.DarkText,
+            ClearTextOnFocus = false,
+        })
+        Corner(4, searchBox)
+        self:AddToRegistry(searchBox, "BackgroundColor3", "Inline")
+
+        local searchBtn = New("TextButton", {
+            Parent = searchRow,
+            BackgroundColor3 = self.Theme.Inline,
+            AutoButtonColor = false,
+            Position = UDim2.new(1, -82, 0, 0),
+            Size = UDim2.fromOffset(38, 24),
+            Font = self.Font,
+            Text = "search",
+            TextSize = 11,
+            TextColor3 = self.Theme.Text,
+        })
+        Corner(4, searchBtn)
+        self:AddToRegistry(searchBtn, "BackgroundColor3", "Inline")
+
+        local clearBtn = New("TextButton", {
+            Parent = searchRow,
+            BackgroundColor3 = self.Theme.Inline,
+            AutoButtonColor = false,
+            Position = UDim2.new(1, -40, 0, 0),
+            Size = UDim2.fromOffset(40, 24),
+            Font = self.Font,
+            Text = "clear",
+            TextSize = 11,
+            TextColor3 = self.Theme.Text,
+        })
+        Corner(4, clearBtn)
+        self:AddToRegistry(clearBtn, "BackgroundColor3", "Inline")
+
+        local list = New("ScrollingFrame", {
+            Parent = holder,
+            BackgroundColor3 = self.Theme.Inline,
+            BorderSizePixel = 0,
+            Position = UDim2.fromOffset(0, 46),
+            Size = UDim2.new(1, 0, 1, -46),
+            CanvasSize = UDim2.new(),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ScrollBarThickness = 2,
+            ScrollBarImageColor3 = self.Theme.Accent,
+        })
+        Corner(4, list)
+        self:AddToRegistry(list, "BackgroundColor3", "Inline")
+        New("UIListLayout", {
+            Parent = list,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 2),
+        })
+        Padding(list, 4)
+
+        return holder, searchBox, searchBtn, clearBtn, list
+    end
+
+    local generalListHolder, weaponSearch, weaponSearchBtn, weaponClearBtn, weaponList =
+        makeSearchList(generalContent, "weapon", 26, 9999)
+    generalListHolder.Size = UDim2.new(1, 0, 1, -26)
+    generalListHolder.Position = UDim2.fromOffset(0, 26)
+    generalListHolder.AnchorPoint = Vector2.new(0, 0)
+    generalListHolder.AutomaticSize = Enum.AutomaticSize.None
+
+    local skinListHolder, skinSearch, skinSearchBtn, skinClearBtn, skinList =
+        makeSearchList(modContent, "skin select", 0, 9999)
+    skinListHolder.Size = UDim2.new(1, 0, 1, 0)
+    skinListHolder.Position = UDim2.fromOffset(0, 0)
+
+    local viewportHolder = New("Frame", {
+        Parent = previewContent,
+        BackgroundColor3 = self.Theme.Inline,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 1, -96),
+    })
+    Corner(4, viewportHolder)
+    self:AddToRegistry(viewportHolder, "BackgroundColor3", "Inline")
+
+    local viewport = New("ViewportFrame", {
+        Parent = viewportHolder,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        Ambient = Color3.fromRGB(180, 180, 190),
+        LightColor = Color3.fromRGB(255, 255, 255),
+        LightDirection = Vector3.new(-1, -1, -1),
+    })
+
+    local worldModel = New("WorldModel", { Parent = viewport })
+
+    local previewControls = New("Frame", {
+        Parent = previewContent,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 0, 1, -88),
+        Size = UDim2.new(1, 0, 0, 88),
+    })
+    New("UIListLayout", {
+        Parent = previewControls,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 6),
+    })
+
+    local autoRotateRow = New("Frame", {
+        Parent = previewControls,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 20),
+        LayoutOrder = 1,
+    })
+    local autoRotateBox = New("TextButton", {
+        Parent = autoRotateRow,
+        BackgroundColor3 = self.Theme.Inline,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromOffset(14, 14),
+        Position = UDim2.fromOffset(0, 3),
+    })
+    Corner(3, autoRotateBox)
+    local autoRotateMark = New("Frame", {
+        Parent = autoRotateBox,
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(8, 8),
+        Position = UDim2.fromOffset(3, 3),
+        Visible = cfg.DefaultAutoRotate ~= false,
+    })
+    Corner(2, autoRotateMark)
+    New("TextLabel", {
+        Parent = autoRotateRow,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(22, 0),
+        Size = UDim2.new(1, -22, 1, 0),
+        Font = self.Font,
+        Text = "auto rotate",
+        TextSize = 12,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local rotSliderBg = New("Frame", {
+        Parent = previewControls,
+        BackgroundColor3 = self.Theme.Inline,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 28),
+        LayoutOrder = 2,
+    })
+    Corner(4, rotSliderBg)
+    New("TextLabel", {
+        Parent = rotSliderBg,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(8, 2),
+        Size = UDim2.new(1, -16, 0, 12),
+        Font = self.Font,
+        Text = "rotation speed",
+        TextSize = 11,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    local rotFill = New("Frame", {
+        Parent = rotSliderBg,
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(8, 18),
+        Size = UDim2.new(0.5, -8, 0, 4),
+    })
+    Corner(2, rotFill)
+    local rotKnob = New("TextButton", {
+        Parent = rotSliderBg,
+        BackgroundColor3 = self.Theme.LightText,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromOffset(10, 10),
+        Position = UDim2.new(0.5, -5, 0, 15),
+    })
+    Corner(5, rotKnob)
+
+    local zoomSliderBg = New("Frame", {
+        Parent = previewControls,
+        BackgroundColor3 = self.Theme.Inline,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 28),
+        LayoutOrder = 3,
+    })
+    Corner(4, zoomSliderBg)
+    New("TextLabel", {
+        Parent = zoomSliderBg,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(8, 2),
+        Size = UDim2.new(1, -16, 0, 12),
+        Font = self.Font,
+        Text = "zoom multiplier",
+        TextSize = 11,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    local zoomFill = New("Frame", {
+        Parent = zoomSliderBg,
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(8, 18),
+        Size = UDim2.new(0.25, -8, 0, 4),
+    })
+    Corner(2, zoomFill)
+    local zoomKnob = New("TextButton", {
+        Parent = zoomSliderBg,
+        BackgroundColor3 = self.Theme.LightText,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromOffset(10, 10),
+        Position = UDim2.new(0.25, -5, 0, 15),
+    })
+    Corner(5, zoomKnob)
+
+    local miscLabel = New("TextLabel", {
+        Parent = miscBody,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Font = self.Font,
+        Text = "misc skin options coming soon",
+        TextSize = 14,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center,
+    })
+
+    local categoryButtons = {}
+    local subTabButtons = {}
+    local weaponButtons = {}
+    local skinButtons = {}
+    local selectedWeaponBtn = nil
+    local selectedSkinBtn = nil
+    local weaponFilter = ""
+    local skinFilter = ""
+    local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
+    local zoomMultiplier = cfg.DefaultZoom or 0.25
+    local autoRotate = cfg.DefaultAutoRotate ~= false
+    local previewModel = nil
+    local previewAngle = 0
+    local previewConn = nil
+
+    local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
+        local alpha = (value - minV) / (maxV - minV)
+        alpha = math.clamp(alpha, 0, 1)
+        fill.Size = UDim2.new(alpha, -8, 0, 4)
+        knob.Position = UDim2.new(alpha, -5, 0, 15)
+    end
+
+    setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.01)
+    setSliderKnob(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier, 0.1, 1)
+
+    local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
+        local dragging = false
+        Connect(knob.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+            end
+        end)
+        Connect(UserInputService.InputEnded, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        Connect(UserInputService.InputChanged, function(input)
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            local rel = sliderBg.AbsolutePosition.X
+            local width = sliderBg.AbsoluteSize.X - 16
+            local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
+            local value = minV + (maxV - minV) * alpha
+            onChange(value)
+            setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
+        end)
+    end
+
+    bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.01, function(v)
+        rotationSpeed = v
+        if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
+    end)
+    bindSlider(zoomSliderBg, zoomFill, zoomKnob, 0.1, 1, function(v)
+        zoomMultiplier = v
+        if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
+    end)
+
+    local function clearListButtons(buttons)
+        for _, btn in ipairs(buttons) do
+            btn:Destroy()
+        end
+        table.clear(buttons)
+    end
+
+    local function populateList(list, items, buttons, selectedName, filterText, onSelect)
+        clearListButtons(buttons)
+        local filter = string.lower(filterText or "")
+        for i, name in ipairs(items) do
+            if filter == "" or string.find(string.lower(name), filter, 1, true) then
+                local btn = New("TextButton", {
+                    Parent = list,
+                    BackgroundColor3 = self.Theme.PageBackground,
+                    AutoButtonColor = false,
+                    Size = UDim2.new(1, 0, 0, 22),
+                    Font = self.Font,
+                    Text = name,
+                    TextSize = 12,
+                    TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
+                    LayoutOrder = i,
+                })
+                Corner(3, btn)
+                table.insert(buttons, btn)
+                Connect(btn.MouseButton1Click, function()
+                    onSelect(name, btn)
+                end)
+            end
+        end
+    end
+
+    local function updatePreviewCamera()
+        if not previewModel then return end
+        local cf, size = previewModel:GetBoundingBox()
+        local dist = math.max(size.X, size.Y, size.Z) * (2.5 / zoomMultiplier)
+        viewport.CurrentCamera = viewport.CurrentCamera or Instance.new("Camera")
+        viewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
+    end
+
+    local SkinPage = {
+        _worldModel = worldModel,
+        _viewport = viewport,
+    }
+
+    function SkinPage:SetWeaponList(items, selected)
+        populateList(weaponList, items, weaponButtons, selected, weaponFilter, function(name, btn)
+            if selectedWeaponBtn then
+                selectedWeaponBtn.TextColor3 = Library.Theme.Text
+            end
+            selectedWeaponBtn = btn
+            btn.TextColor3 = Library.Theme.Accent
+            if cfg.OnWeaponSelected then cfg.OnWeaponSelected(name) end
+        end)
+    end
+
+    function SkinPage:SetSkinList(items, selected)
+        populateList(skinList, items, skinButtons, selected, skinFilter, function(name, btn)
+            if selectedSkinBtn then
+                selectedSkinBtn.TextColor3 = Library.Theme.Text
+            end
+            selectedSkinBtn = btn
+            btn.TextColor3 = Library.Theme.Accent
+            if cfg.OnSkinSelected then cfg.OnSkinSelected(name) end
+        end)
+    end
+
+    function SkinPage:SetPreviewModel(model)
+        for _, child in ipairs(worldModel:GetChildren()) do
+            child:Destroy()
+        end
+        previewModel = nil
+        if previewConn then
+            previewConn:Disconnect()
+            previewConn = nil
+        end
+        if not model then return end
+        previewModel = model
+        model.Parent = worldModel
+        if model:IsA("Model") then
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                model:PivotTo(CFrame.new())
+            end
+        elseif model:IsA("BasePart") then
+            model.CFrame = CFrame.new()
+        end
+        updatePreviewCamera()
+        previewAngle = 0
+        previewConn = Connect(RunService.RenderStepped, function(dt)
+            if not autoRotate or not previewModel or not previewModel.Parent then return end
+            previewAngle = previewAngle + dt * (rotationSpeed * 1000)
+            if previewModel:IsA("Model") then
+                previewModel:PivotTo(CFrame.Angles(0, previewAngle, 0))
+            elseif previewModel:IsA("BasePart") then
+                previewModel.CFrame = CFrame.Angles(0, previewAngle, 0)
+            end
+            updatePreviewCamera()
+        end)
+    end
+
+    function SkinPage:SetCategoryCount(category, count)
+        local btn = categoryButtons[category]
+        if btn and btn._countLabel then
+            btn._countLabel.Text = tostring(count or 0)
+        end
+    end
+
+    local categories = cfg.Categories or { "skins", "mask", "model" }
+    for i, cat in ipairs(categories) do
+        local catBtn = New("TextButton", {
+            Parent = sidebar,
+            BackgroundColor3 = self.Theme.Inline,
+            AutoButtonColor = false,
+            Size = UDim2.new(1, 0, 0, 52),
+            Text = "",
+            LayoutOrder = i,
+        })
+        Corner(4, catBtn)
+        self:AddToRegistry(catBtn, "BackgroundColor3", "Inline")
+        New("TextLabel", {
+            Parent = catBtn,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 16),
+            Position = UDim2.fromOffset(0, 8),
+            Font = self.FontBold,
+            Text = cat,
+            TextSize = 11,
+            TextColor3 = self.Theme.Text,
+        })
+        local countLabel = New("TextLabel", {
+            Parent = catBtn,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 14),
+            Position = UDim2.fromOffset(0, 28),
+            Font = self.Font,
+            Text = "0",
+            TextSize = 11,
+            TextColor3 = self.Theme.DarkText,
+        })
+        catBtn._countLabel = countLabel
+        categoryButtons[cat] = catBtn
+        Connect(catBtn.MouseButton1Click, function()
+            for name, b in pairs(categoryButtons) do
+                b.BackgroundColor3 = name == cat and self.Theme.SectionBackground or self.Theme.Inline
+            end
+            if cfg.OnCategoryChanged then cfg.OnCategoryChanged(cat) end
+        end)
+        if i == 1 then
+            catBtn.BackgroundColor3 = self.Theme.SectionBackground
+        end
+    end
+
+    local subTabs = cfg.SubTabs or { "main", "misc" }
+    for i, subName in ipairs(subTabs) do
+        local subBtn = New("TextButton", {
+            Parent = subNav,
+            BackgroundTransparency = 1,
+            AutoButtonColor = false,
+            Size = UDim2.fromOffset(60, 24),
+            Font = self.FontBold,
+            Text = subName,
+            TextSize = 13,
+            TextColor3 = i == 1 and self.Theme.Accent or self.Theme.DarkText,
+            LayoutOrder = i,
+        })
+        subTabButtons[subName] = subBtn
+        Connect(subBtn.MouseButton1Click, function()
+            for name, b in pairs(subTabButtons) do
+                b.TextColor3 = name == subName and self.Theme.Accent or self.Theme.DarkText
+            end
+            mainBody.Visible = subName == "main"
+            miscBody.Visible = subName == "misc"
+        end)
+    end
+
+    Connect(enableBox.MouseButton1Click, function()
+        enableMark.Visible = not enableMark.Visible
+        if cfg.OnEnabledChanged then cfg.OnEnabledChanged(enableMark.Visible) end
+    end)
+
+    Connect(autoRotateBox.MouseButton1Click, function()
+        autoRotateMark.Visible = not autoRotateMark.Visible
+        autoRotate = autoRotateMark.Visible
+        if cfg.OnAutoRotateChanged then cfg.OnAutoRotateChanged(autoRotate) end
+    end)
+
+    Connect(weaponSearch:GetPropertyChangedSignal("Text"), function()
+        weaponFilter = weaponSearch.Text
+        if cfg.OnWeaponSearch then
+            cfg.OnWeaponSearch(weaponFilter)
+        elseif cfg._refreshWeapons then
+            cfg._refreshWeapons()
+        end
+    end)
+    Connect(weaponSearchBtn.MouseButton1Click, function()
+        weaponFilter = weaponSearch.Text
+        if cfg._refreshWeapons then cfg._refreshWeapons() end
+    end)
+    Connect(weaponClearBtn.MouseButton1Click, function()
+        weaponSearch.Text = ""
+        weaponFilter = ""
+        if cfg._refreshWeapons then cfg._refreshWeapons() end
+    end)
+
+    Connect(skinSearch:GetPropertyChangedSignal("Text"), function()
+        skinFilter = skinSearch.Text
+        if cfg.OnSkinSearch then
+            cfg.OnSkinSearch(skinFilter)
+        elseif cfg._refreshSkins then
+            cfg._refreshSkins()
+        end
+    end)
+    Connect(skinSearchBtn.MouseButton1Click, function()
+        skinFilter = skinSearch.Text
+        if cfg._refreshSkins then cfg._refreshSkins() end
+    end)
+    Connect(skinClearBtn.MouseButton1Click, function()
+        skinSearch.Text = ""
+        skinFilter = ""
+        if cfg._refreshSkins then cfg._refreshSkins() end
+    end)
+
+    SkinPage._cfg = cfg
+    return SkinPage
 end
 
 function Library:LoadAutoload()
