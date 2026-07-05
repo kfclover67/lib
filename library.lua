@@ -2333,14 +2333,28 @@ local function serializeValue(opt)
 end
 
 function Library:GetConfigData()
-    local data = { toggles = {}, options = {} }
+    local data = { toggles = {}, options = {}, custom = {} }
     for id, t in pairs(self.Toggles) do
         if not t.IgnoreConfig then data.toggles[id] = t.Value end
     end
     for id, o in pairs(self.Options) do
         if not o.IgnoreConfig and o.Type ~= "Button" then data.options[id] = serializeValue(o) end
     end
+    for name, provider in pairs(self._configProviders or {}) do
+        if provider and type(provider.get) == "function" then
+            local ok, value = pcall(provider.get)
+            if ok and value ~= nil then
+                data.custom[name] = value
+            end
+        end
+    end
     return data
+end
+
+function Library:RegisterConfigProvider(name, getFn, applyFn)
+    self._configProviders = self._configProviders or {}
+    self._configProviders[name] = { get = getFn, apply = applyFn }
+    return self
 end
 
 function Library:ApplyConfigData(data)
@@ -2385,6 +2399,12 @@ function Library:ApplyConfigData(data)
                     opt.State = opt._linkedToggle.Value == true
                 end
             end)
+        end
+    end
+    for name, customData in pairs(data.custom or {}) do
+        local provider = self._configProviders and self._configProviders[name]
+        if provider and type(provider.apply) == "function" then
+            pcall(provider.apply, customData)
         end
     end
     self._applyingConfig = false
@@ -3377,6 +3397,22 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     function SkinPage:SetEnabled(state)
         enableMark.Visible = state == true
+    end
+
+    function SkinPage:SetAutoRotate(state)
+        autoRotate = state == true
+        autoRotateMark.Visible = autoRotate
+    end
+
+    function SkinPage:SetRotationSpeed(value)
+        rotationSpeed = tonumber(value) or rotationSpeed
+        setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.01)
+    end
+
+    function SkinPage:SetZoom(value)
+        zoomMultiplier = tonumber(value) or zoomMultiplier
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier)
+        updatePreviewCamera()
     end
 
     Connect(enableBox.MouseButton1Click, function()
