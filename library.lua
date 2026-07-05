@@ -2797,6 +2797,11 @@ function Library:_BuildSkinChangerPage(page, cfg)
             LightDirection = Vector3.new(-1, -1, -1),
         })
 
+        local previewCamera = Instance.new("Camera")
+        previewCamera.FieldOfView = 60
+        previewCamera.Parent = viewport
+        viewport.CurrentCamera = previewCamera
+
         local worldModel = New("WorldModel", { Parent = viewport })
 
         local previewControls = New("Frame", {
@@ -2811,7 +2816,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
             Padding = UDim.new(0, 6),
         })
 
-        return viewportHolder, viewport, worldModel, previewControls
+        return viewportHolder, viewport, worldModel, previewControls, previewCamera
     end
 
     local function makePanel(parent, title, widthScale, xOffset)
@@ -2999,7 +3004,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
     skinListHolder.Size = UDim2.new(1, 0, 1, 0)
     skinListHolder.Position = UDim2.fromOffset(0, 0)
 
-    local viewportHolder, viewport, worldModel, previewControls =
+    local viewportHolder, viewport, worldModel, previewControls, previewCamera =
         makePreviewBlock(previewContent, cfg.DefaultAutoRotate)
 
     local autoRotateRow = New("Frame", {
@@ -3118,15 +3123,17 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local selectedSkinBtn = nil
     local weaponFilter = ""
     local skinFilter = ""
-    local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
+    local rotationSpeed = cfg.DefaultRotationSpeed or 0.01
     local zoomMultiplier = cfg.DefaultZoom or 0.25
     local autoRotate = cfg.DefaultAutoRotate ~= false
     local previewModel = nil
-    local previewYaw = 0
-    local previewPitch = 0
-    local previewAngle = 0
-    local previewConn = nil
-    local ZOOM_MIN = 0.001
+    local previewDistance = 8
+    local previewRotationX = math.rad(-15)
+    local previewRotationY = 0
+    local previewCenter = Vector3.zero
+    local previewDragging = false
+    local previewHovering = false
+    local previewLastPos = Vector2.zero
     local SLIDER_ZOOM_MIN = 0.01
     local SLIDER_ZOOM_MAX = 100
 
@@ -3142,38 +3149,32 @@ function Library:_BuildSkinChangerPage(page, cfg)
         knob.Position = UDim2.new(alpha, trackPad, 0, 18)
     end
 
-    local function applyPreviewRotation(model, yaw, pitch)
-        if not model then return end
-        local rot = CFrame.Angles(pitch, yaw, 0)
-        pcall(function()
-            if model:IsA("Model") then
-                model:PivotTo(rot)
-            elseif model:IsA("BasePart") then
-                model.CFrame = rot
-            elseif model:IsA("Tool") then
-                model:PivotTo(rot)
-            end
-        end)
-    end
-
     local function applyScrollZoom(current, wheelDelta)
         local factor = 1.15 ^ wheelDelta
-        return math.max(ZOOM_MIN, current * factor)
+        return math.clamp(current * factor, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
     end
 
-    local function syncZoomSlider(sliderBg, fill, knob, value)
+    local function zoomSliderToDistance(value)
+        return math.clamp(24 / math.max(value, 0.05), 1.5, 40)
+    end
+
+    local function distanceToZoomSlider(distance)
+        return math.clamp(24 / math.max(distance, 0.1), SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
+    end
+
+    local function syncZoomSlider(sliderBg, fill, knob, distance)
         setSliderKnob(
             sliderBg,
             fill,
             knob,
-            math.clamp(value, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX),
+            distanceToZoomSlider(distance),
             SLIDER_ZOOM_MIN,
             SLIDER_ZOOM_MAX
         )
     end
 
-    setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.01)
-    setSliderKnob(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
+    setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.05)
+    syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
 
     local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
         local dragging = false
@@ -3204,7 +3205,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end)
     end
 
-    bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.01, function(v)
+    bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.05, function(v)
         rotationSpeed = v
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
@@ -3216,7 +3217,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         table.clear(buttons)
     end
 
-    local function populateList(list, items, buttons, selectedName, filterText, onSelect, getIcon)
+    local function populateList(list, items, buttons, selectedName, filterText, onSelect)
         clearListButtons(buttons)
         local filter = string.lower(filterText or "")
         for i, name in ipairs(items) do
@@ -3225,60 +3226,16 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     Parent = list,
                     BackgroundColor3 = self.Theme.PageBackground,
                     AutoButtonColor = false,
-                    Size = UDim2.new(1, 0, 0, 26),
+                    Size = UDim2.new(1, 0, 0, 22),
                     Font = self.Font,
-                    Text = "",
+                    Text = name,
                     TextSize = 12,
+                    TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
+                    TextXAlignment = Enum.TextXAlignment.Left,
                     LayoutOrder = i,
                     ZIndex = 4,
                 })
                 Corner(3, btn)
-
-                local iconId = getIcon and getIcon(name)
-                local textLabel
-                if iconId then
-                    New("ImageLabel", {
-                        Parent = btn,
-                        Name = "Icon",
-                        BackgroundTransparency = 1,
-                        Size = UDim2.fromOffset(18, 18),
-                        Position = UDim2.fromOffset(4, 4),
-                        Image = iconId,
-                        ScaleType = Enum.ScaleType.Fit,
-                        ZIndex = 5,
-                    })
-                    textLabel = New("TextLabel", {
-                        Parent = btn,
-                        Name = "Label",
-                        BackgroundTransparency = 1,
-                        Position = UDim2.fromOffset(26, 0),
-                        Size = UDim2.new(1, -30, 1, 0),
-                        Font = self.Font,
-                        Text = name,
-                        TextSize = 12,
-                        TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd,
-                        ZIndex = 5,
-                    })
-                else
-                    textLabel = New("TextLabel", {
-                        Parent = btn,
-                        Name = "Label",
-                        BackgroundTransparency = 1,
-                        Position = UDim2.fromOffset(4, 0),
-                        Size = UDim2.new(1, -8, 1, 0),
-                        Font = self.Font,
-                        Text = name,
-                        TextSize = 12,
-                        TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd,
-                        ZIndex = 5,
-                    })
-                end
-
-                btn._label = textLabel
                 table.insert(buttons, btn)
                 Connect(btn.MouseButton1Click, function()
                     onSelect(name, btn)
@@ -3330,31 +3287,109 @@ function Library:_BuildSkinChangerPage(page, cfg)
         return CFrame.new(), Vector3.new(2, 2, 2)
     end
 
-    local function updatePreviewCamera()
-        if not previewModel then return end
-        local cf, size = getPreviewBounds(previewModel)
-        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.5 / zoomMultiplier)
-        viewport.CurrentCamera = viewport.CurrentCamera or Instance.new("Camera")
-        viewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
+    local function ensurePreviewPrimary(model)
+        if not model then
+            return nil
+        end
+        if model:IsA("BasePart") then
+            return model
+        end
+        if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
+            return model.PrimaryPart
+        end
+        for _, part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") then
+                model.PrimaryPart = part
+                return part
+            end
+        end
+        return nil
     end
+
+    local function centerPreviewModel(model)
+        if not model then
+            return
+        end
+
+        local cf, size = getPreviewBounds(model)
+        local center = cf.Position
+        previewCenter = Vector3.zero
+
+        if model:IsA("Model") or model:IsA("Tool") then
+            ensurePreviewPrimary(model)
+            if model.PrimaryPart then
+                model:PivotTo(CFrame.new(-center))
+            end
+        elseif model:IsA("BasePart") then
+            model.CFrame = CFrame.new(-center)
+        end
+
+        local maxSize = math.max(size.X, size.Y, size.Z, 1)
+        previewDistance = math.clamp(maxSize * 1.8, 2, 24)
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
+    end
+
+    local function updateOrbitCamera()
+        if not previewModel or not previewCamera then
+            return
+        end
+        local offset = CFrame.new(0, 0, previewDistance)
+        local rotation = CFrame.Angles(0, previewRotationY, 0) * CFrame.Angles(previewRotationX, 0, 0)
+        local camCF = CFrame.new(previewCenter) * rotation * offset
+        previewCamera.CFrame = CFrame.lookAt(camCF.Position, previewCenter)
+    end
+
+    Connect(RunService.RenderStepped, function(dt)
+        if previewModel and previewModel.Parent then
+            if not previewDragging and autoRotate then
+                previewRotationY = previewRotationY + rotationSpeed * dt * 60
+            end
+            updateOrbitCamera()
+        end
+    end)
 
     attachPreviewInput(viewportHolder, function(wheelDelta)
         zoomMultiplier = applyScrollZoom(zoomMultiplier, wheelDelta)
-        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier)
-        updatePreviewCamera()
+        previewDistance = zoomSliderToDistance(zoomMultiplier)
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
+        updateOrbitCamera()
         if cfg.OnZoomChanged then
             cfg.OnZoomChanged(zoomMultiplier)
         end
     end, function(deltaX, deltaY)
-        previewYaw = previewYaw + deltaX * 0.012
-        previewPitch = math.clamp(previewPitch + deltaY * 0.012, -1.4, 1.4)
-        applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
-        updatePreviewCamera()
+        previewRotationY = previewRotationY - deltaX * 0.01
+        previewRotationX = previewRotationX - deltaY * 0.01
+        previewRotationX = math.clamp(previewRotationX, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
+        updateOrbitCamera()
     end)
+
+    local previewInput = viewportHolder:FindFirstChildWhichIsA("TextButton", true)
+    if previewInput then
+        Connect(previewInput.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                previewDragging = true
+                previewLastPos = input.Position
+            end
+        end)
+        Connect(UserInputService.InputEnded, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                previewDragging = false
+            end
+        end)
+        Connect(previewInput.MouseEnter, function()
+            previewHovering = true
+        end)
+        Connect(previewInput.MouseLeave, function()
+            previewHovering = false
+        end)
+    end
 
     bindSlider(zoomSliderBg, zoomFill, zoomKnob, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
         zoomMultiplier = v
-        updatePreviewCamera()
+        previewDistance = zoomSliderToDistance(v)
+        updateOrbitCamera()
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
     end)
 
@@ -3365,35 +3400,23 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     function SkinPage:SetWeaponList(items, selected)
         populateList(weaponList, items, weaponButtons, selected, weaponFilter, function(name, btn)
-            if selectedWeaponBtn and selectedWeaponBtn._label then
-                selectedWeaponBtn._label.TextColor3 = Library.Theme.Text
+            if selectedWeaponBtn then
+                selectedWeaponBtn.TextColor3 = Library.Theme.Text
             end
             selectedWeaponBtn = btn
-            if btn._label then
-                btn._label.TextColor3 = Library.Theme.Accent
-            end
+            btn.TextColor3 = Library.Theme.Accent
             if cfg.OnWeaponSelected then cfg.OnWeaponSelected(name) end
-        end, function(name)
-            if cfg.GetWeaponIcon then
-                return cfg.GetWeaponIcon(name)
-            end
         end)
     end
 
     function SkinPage:SetSkinList(items, selected)
         populateList(skinList, items, skinButtons, selected, skinFilter, function(name, btn)
-            if selectedSkinBtn and selectedSkinBtn._label then
-                selectedSkinBtn._label.TextColor3 = Library.Theme.Text
+            if selectedSkinBtn then
+                selectedSkinBtn.TextColor3 = Library.Theme.Text
             end
             selectedSkinBtn = btn
-            if btn._label then
-                btn._label.TextColor3 = Library.Theme.Accent
-            end
+            btn.TextColor3 = Library.Theme.Accent
             if cfg.OnSkinSelected then cfg.OnSkinSelected(name) end
-        end, function(name)
-            if cfg.GetSkinIcon then
-                return cfg.GetSkinIcon(name)
-            end
         end)
     end
 
@@ -3402,39 +3425,16 @@ function Library:_BuildSkinChangerPage(page, cfg)
             child:Destroy()
         end
         previewModel = nil
-        if previewConn then
-            previewConn:Disconnect()
-            previewConn = nil
+        if not model then
+            return
         end
-        if not model then return end
+
         previewModel = model
         model.Parent = worldModel
-        if model:IsA("Model") then
-            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-            if primary then
-                model:PivotTo(CFrame.new())
-            end
-        elseif model:IsA("Tool") then
-            local handle = model:FindFirstChild("Handle")
-            if handle and handle:IsA("BasePart") then
-                model:PivotTo(CFrame.new())
-            end
-        elseif model:IsA("BasePart") then
-            model.CFrame = CFrame.new()
-        end
-        updatePreviewCamera()
-        previewAngle = 0
-        previewYaw = 0
-        previewPitch = 0
-        previewConn = Connect(RunService.RenderStepped, function(dt)
-            if autoRotate and previewModel and previewModel.Parent then
-                previewAngle = previewAngle + dt * (rotationSpeed * 1000)
-            end
-            if previewModel and previewModel.Parent then
-                applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
-                updatePreviewCamera()
-            end
-        end)
+        centerPreviewModel(model)
+        previewRotationX = math.rad(-15)
+        previewRotationY = 0
+        updateOrbitCamera()
     end
 
     function SkinPage:SetEnabled(state)
