@@ -2798,7 +2798,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         })
 
         local previewCamera = Instance.new("Camera")
-        previewCamera.FieldOfView = 60
+        previewCamera.FieldOfView = 40
         previewCamera.Parent = viewport
         viewport.CurrentCamera = previewCamera
 
@@ -3028,7 +3028,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         BorderSizePixel = 0,
         Size = UDim2.fromOffset(8, 8),
         Position = UDim2.fromOffset(3, 3),
-        Visible = cfg.DefaultAutoRotate ~= false,
+        Visible = cfg.DefaultAutoRotate == true,
     })
     Corner(2, autoRotateMark)
     New("TextLabel", {
@@ -3124,15 +3124,15 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local weaponFilter = ""
     local skinFilter = ""
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.01
-    local previewDistance = 8
-    local previewRotationX = math.rad(-15)
+    local previewDistance = 3
+    local previewRotationX = math.rad(-12)
     local previewRotationY = 0
     local previewCenter = Vector3.zero
     local previewDragging = false
     local previewHovering = false
     local previewLastPos = Vector2.zero
-    local PREVIEW_DISTANCE_MIN = 2
-    local PREVIEW_DISTANCE_MAX = 24
+    local PREVIEW_DISTANCE_MIN = 1.25
+    local PREVIEW_DISTANCE_MAX = 8
 
     local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
         local alpha = (value - minV) / (maxV - minV)
@@ -3167,9 +3167,9 @@ function Library:_BuildSkinChangerPage(page, cfg)
         )
     end
 
-    local autoRotate = cfg.DefaultAutoRotate ~= false
+    local autoRotate = cfg.DefaultAutoRotate == true
     local previewModel = nil
-    previewDistance = sliderToDistance(math.clamp(cfg.DefaultZoom or 0.5, 0, 1))
+    previewDistance = sliderToDistance(math.clamp(cfg.DefaultZoom or 0.92, 0, 1))
 
     setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.05)
     syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
@@ -3358,8 +3358,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
             model.CFrame = CFrame.new(-center)
         end
 
-        local maxSize = math.max(size.X, size.Y, size.Z, 0.5)
-        previewDistance = math.clamp(maxSize * 1.35 + 2, PREVIEW_DISTANCE_MIN, PREVIEW_DISTANCE_MAX)
+        local maxSize = math.max(size.X, size.Y, size.Z, 0.25)
+        previewDistance = math.clamp(maxSize * 0.5 + 1.1, PREVIEW_DISTANCE_MIN, 5)
         syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
     end
 
@@ -3383,7 +3383,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
     end)
 
     attachPreviewInput(viewportHolder, function(wheelDelta)
-        local factor = 0.9 ^ wheelDelta
+        local factor = 0.82 ^ wheelDelta
         previewDistance = math.clamp(previewDistance * factor, PREVIEW_DISTANCE_MIN, PREVIEW_DISTANCE_MAX)
         syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
         updateOrbitCamera()
@@ -3422,8 +3422,23 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     bindSlider(zoomSliderBg, zoomFill, zoomKnob, 0, 1, function(v)
         previewDistance = sliderToDistance(v)
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
         updateOrbitCamera()
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
+    end)
+
+    Connect(zoomSliderBg.InputBegan, function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        local rel = zoomSliderBg.AbsolutePosition.X
+        local width = zoomSliderBg.AbsoluteSize.X - 16
+        local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
+        previewDistance = sliderToDistance(alpha)
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
+        updateOrbitCamera()
+        if cfg.OnZoomChanged then cfg.OnZoomChanged(alpha) end
     end)
 
     local SkinPage = {
