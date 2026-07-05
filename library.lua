@@ -3114,7 +3114,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local weaponFilter = ""
     local skinFilter = ""
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
-    local zoomMultiplier = cfg.DefaultZoom or 0.25
+    local zoomMultiplier = cfg.DefaultZoom or 1
     local autoRotate = cfg.DefaultAutoRotate ~= false
     local previewModel = nil
     local previewYaw = 0
