@@ -3455,6 +3455,11 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     })
     Corner(4, refreshBtn)
     self:AddToRegistry(refreshBtn, "BackgroundColor3", "Inline")
+    Connect(refreshBtn.MouseButton1Click, function()
+        if cfg.OnRefresh then
+            cfg.OnRefresh()
+        end
+    end)
 
     local viewportHolder = New("Frame", {
         Parent = root,
@@ -3669,6 +3674,24 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
 
+    local function centerPreviewModel(model)
+        if not model then
+            return
+        end
+
+        if model:IsA("Model") then
+            local primary = model.PrimaryPart
+                or model:FindFirstChild("HumanoidRootPart")
+                or model:FindFirstChild("Torso")
+                or model:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                model:PivotTo(CFrame.new())
+            end
+        elseif model:IsA("BasePart") then
+            model.CFrame = CFrame.new()
+        end
+    end
+
     local function updatePreviewCamera()
         if not previewModel or not previewModel.Parent then
             return
@@ -3779,6 +3802,9 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         previewAngle = 0
         previewYaw = 0
         previewPitch = 0
+        centerPreviewModel(model)
+        startPivot = CFrame.new()
+        updatePreviewCamera()
 
         task.spawn(function()
             task.wait()
@@ -3787,7 +3813,8 @@ function Library:_BuildEspPreviewInto(parent, cfg)
                 return
             end
 
-            startPivot = model:GetPivot()
+            centerPreviewModel(model)
+            startPivot = CFrame.new()
             updatePreviewCamera()
 
             previewConn = Connect(RunService.RenderStepped, function(dt)
@@ -3801,6 +3828,7 @@ function Library:_BuildEspPreviewInto(parent, cfg)
                 end
 
                 previewModel:PivotTo(startPivot * CFrame.Angles(previewPitch, previewYaw + previewAngle, 0))
+                updatePreviewCamera()
 
                 local vpSize = viewport.AbsoluteSize
                 local fov = previewCamera.FieldOfView
@@ -3808,6 +3836,8 @@ function Library:_BuildEspPreviewInto(parent, cfg)
                     getgenv().Esp.Preview.RenderContext = {
                         Camera = previewCamera,
                         Viewport = viewport,
+                        Overlay = overlay,
+                        OverlayAbsolutePosition = overlay.AbsolutePosition,
                         ViewportSizeY = vpSize.Y,
                         FocalLength = vpSize.Y / (2 * math.tan(math.rad(fov) * 0.5)),
                     }
