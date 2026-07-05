@@ -3124,9 +3124,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local weaponFilter = ""
     local skinFilter = ""
     local rotationSpeed = cfg.DefaultRotationSpeed or 0.01
-    local zoomMultiplier = cfg.DefaultZoom or 0.25
-    local autoRotate = cfg.DefaultAutoRotate ~= false
-    local previewModel = nil
     local previewDistance = 8
     local previewRotationX = math.rad(-15)
     local previewRotationY = 0
@@ -3134,8 +3131,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local previewDragging = false
     local previewHovering = false
     local previewLastPos = Vector2.zero
-    local SLIDER_ZOOM_MIN = 0.01
-    local SLIDER_ZOOM_MAX = 100
+    local PREVIEW_DISTANCE_MIN = 2
+    local PREVIEW_DISTANCE_MAX = 24
 
     local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
         local alpha = (value - minV) / (maxV - minV)
@@ -3149,17 +3146,14 @@ function Library:_BuildSkinChangerPage(page, cfg)
         knob.Position = UDim2.new(alpha, trackPad, 0, 18)
     end
 
-    local function applyScrollZoom(current, wheelDelta)
-        local factor = 1.15 ^ wheelDelta
-        return math.clamp(current * factor, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
+    local function distanceToSlider(distance)
+        local alpha = (distance - PREVIEW_DISTANCE_MIN) / (PREVIEW_DISTANCE_MAX - PREVIEW_DISTANCE_MIN)
+        return math.clamp(1 - alpha, 0, 1)
     end
 
-    local function zoomSliderToDistance(value)
-        return math.clamp(24 / math.max(value, 0.05), 1.5, 40)
-    end
-
-    local function distanceToZoomSlider(distance)
-        return math.clamp(24 / math.max(distance, 0.1), SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
+    local function sliderToDistance(alpha)
+        alpha = math.clamp(alpha, 0, 1)
+        return PREVIEW_DISTANCE_MIN + (1 - alpha) * (PREVIEW_DISTANCE_MAX - PREVIEW_DISTANCE_MIN)
     end
 
     local function syncZoomSlider(sliderBg, fill, knob, distance)
@@ -3167,11 +3161,15 @@ function Library:_BuildSkinChangerPage(page, cfg)
             sliderBg,
             fill,
             knob,
-            distanceToZoomSlider(distance),
-            SLIDER_ZOOM_MIN,
-            SLIDER_ZOOM_MAX
+            distanceToSlider(distance),
+            0,
+            1
         )
     end
+
+    local autoRotate = cfg.DefaultAutoRotate ~= false
+    local previewModel = nil
+    previewDistance = sliderToDistance(math.clamp(cfg.DefaultZoom or 0.5, 0, 1))
 
     setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.05)
     syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
@@ -3244,23 +3242,51 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end
     end
 
+    local function getPreviewVisualParts(model)
+        local parts = {}
+        if model:IsA("BasePart") and model.Transparency < 1 then
+            return { model }
+        end
+
+        for _, name in ipairs({ "CurrentSkin", "Default", "Handle" }) do
+            local part = model:FindFirstChild(name, true)
+            if part and part:IsA("BasePart") and part.Transparency < 1 then
+                table.insert(parts, part)
+            end
+        end
+
+        if #parts == 0 then
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("MeshPart") and part.Transparency < 1 then
+                    table.insert(parts, part)
+                end
+            end
+        end
+
+        if #parts == 0 then
+            for _, part in ipairs(model:GetDescendants()) do
+                if part:IsA("BasePart") and part.Transparency < 1 then
+                    table.insert(parts, part)
+                end
+            end
+        end
+
+        return parts
+    end
+
     local function getPreviewBounds(model)
         if model:IsA("BasePart") then
             return model.CFrame, model.Size
         end
 
-        if model:IsA("Model") and model.GetBoundingBox then
-            local ok, cf, size = pcall(function()
-                return model:GetBoundingBox()
-            end)
-            if ok and cf then
-                return cf, size
-            end
+        local parts = getPreviewVisualParts(model)
+        if #parts == 1 then
+            return parts[1].CFrame, parts[1].Size
         end
 
-        local minV, maxV
-        for _, part in ipairs(model:GetDescendants()) do
-            if part:IsA("BasePart") then
+        if #parts > 1 then
+            local minV, maxV
+            for _, part in ipairs(parts) do
                 local pos = part.Position
                 if not minV then
                     minV = pos
@@ -3278,10 +3304,18 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     )
                 end
             end
+            if minV and maxV then
+                return CFrame.new((minV + maxV) * 0.5), (maxV - minV)
+            end
         end
 
-        if minV and maxV then
-            return CFrame.new((minV + maxV) * 0.5), (maxV - minV)
+        if model:IsA("Model") and model.GetBoundingBox then
+            local ok, cf, size = pcall(function()
+                return model:GetBoundingBox()
+            end)
+            if ok and cf then
+                return cf, size
+            end
         end
 
         return CFrame.new(), Vector3.new(2, 2, 2)
@@ -3324,8 +3358,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
             model.CFrame = CFrame.new(-center)
         end
 
-        local maxSize = math.max(size.X, size.Y, size.Z, 1)
-        previewDistance = math.clamp(maxSize * 1.8, 2, 24)
+        local maxSize = math.max(size.X, size.Y, size.Z, 0.5)
+        previewDistance = math.clamp(maxSize * 1.35 + 2, PREVIEW_DISTANCE_MIN, PREVIEW_DISTANCE_MAX)
         syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
     end
 
@@ -3349,12 +3383,12 @@ function Library:_BuildSkinChangerPage(page, cfg)
     end)
 
     attachPreviewInput(viewportHolder, function(wheelDelta)
-        zoomMultiplier = applyScrollZoom(zoomMultiplier, wheelDelta)
-        previewDistance = zoomSliderToDistance(zoomMultiplier)
+        local factor = 0.9 ^ wheelDelta
+        previewDistance = math.clamp(previewDistance * factor, PREVIEW_DISTANCE_MIN, PREVIEW_DISTANCE_MAX)
         syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
         updateOrbitCamera()
         if cfg.OnZoomChanged then
-            cfg.OnZoomChanged(zoomMultiplier)
+            cfg.OnZoomChanged(distanceToSlider(previewDistance))
         end
     end, function(deltaX, deltaY)
         previewRotationY = previewRotationY - deltaX * 0.01
@@ -3386,9 +3420,8 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end)
     end
 
-    bindSlider(zoomSliderBg, zoomFill, zoomKnob, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
-        zoomMultiplier = v
-        previewDistance = zoomSliderToDistance(v)
+    bindSlider(zoomSliderBg, zoomFill, zoomKnob, 0, 1, function(v)
+        previewDistance = sliderToDistance(v)
         updateOrbitCamera()
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
     end)
