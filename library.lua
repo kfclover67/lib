@@ -235,7 +235,9 @@ local function formatImage(icon)
     if icon == nil or icon == "" then return nil end
     if type(icon) == "number" then
         if icon <= 0 then return nil end
-        return "rbxassetid://" .. icon
+        local s = string.format("%.0f", icon)
+        if s == "0" then return nil end
+        return "rbxassetid://" .. s
     end
     local s = tostring(icon)
     if s == "0" then return nil end
@@ -881,7 +883,8 @@ function Library:CreateWindow(cfg)
                 Position = UDim2.fromOffset(12, 9),
                 Size = UDim2.fromOffset(16, 16),
                 Image = imageId,
-                ImageColor3 = Library.Theme.DarkText,
+                ScaleType = Enum.ScaleType.Fit,
+                ImageColor3 = Color3.fromRGB(255, 255, 255),
             })
         else
             iconObj = New("Frame", {
@@ -953,7 +956,8 @@ function Library:CreateWindow(cfg)
                 t.Button.BackgroundTransparency = 1
                 t._text.TextColor3 = Library.Theme.DarkText
                 if t._icon:IsA("ImageLabel") then
-                    t._icon.ImageColor3 = Library.Theme.DarkText
+                    t._icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+                    t._icon.ImageTransparency = 0.35
                 else
                     t._icon.BackgroundColor3 = Library.Theme.DarkText
                 end
@@ -963,7 +967,8 @@ function Library:CreateWindow(cfg)
             tabButton.BackgroundColor3 = Library.Theme.SectionBackground
             tabText.TextColor3 = Library.Theme.Accent
             if iconObj:IsA("ImageLabel") then
-                iconObj.ImageColor3 = Library.Theme.Accent
+                iconObj.ImageColor3 = Color3.fromRGB(255, 255, 255)
+                iconObj.ImageTransparency = 0
             else
                 iconObj.BackgroundColor3 = Library.Theme.Accent
             end
