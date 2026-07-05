@@ -235,9 +235,7 @@ local function formatImage(icon)
     if icon == nil or icon == "" then return nil end
     if type(icon) == "number" then
         if icon <= 0 then return nil end
-        local s = string.format("%.0f", icon)
-        if s == "0" then return nil end
-        return "rbxassetid://" .. s
+        return "rbxassetid://" .. icon
     end
     local s = tostring(icon)
     if s == "0" then return nil end
@@ -883,8 +881,7 @@ function Library:CreateWindow(cfg)
                 Position = UDim2.fromOffset(12, 9),
                 Size = UDim2.fromOffset(16, 16),
                 Image = imageId,
-                ScaleType = Enum.ScaleType.Fit,
-                ImageColor3 = Color3.fromRGB(255, 255, 255),
+                ImageColor3 = Library.Theme.DarkText,
             })
         else
             iconObj = New("Frame", {
@@ -956,8 +953,7 @@ function Library:CreateWindow(cfg)
                 t.Button.BackgroundTransparency = 1
                 t._text.TextColor3 = Library.Theme.DarkText
                 if t._icon:IsA("ImageLabel") then
-                    t._icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-                    t._icon.ImageTransparency = 0.35
+                    t._icon.ImageColor3 = Library.Theme.DarkText
                 else
                     t._icon.BackgroundColor3 = Library.Theme.DarkText
                 end
@@ -967,8 +963,7 @@ function Library:CreateWindow(cfg)
             tabButton.BackgroundColor3 = Library.Theme.SectionBackground
             tabText.TextColor3 = Library.Theme.Accent
             if iconObj:IsA("ImageLabel") then
-                iconObj.ImageColor3 = Color3.fromRGB(255, 255, 255)
-                iconObj.ImageTransparency = 0
+                iconObj.ImageColor3 = Library.Theme.Accent
             else
                 iconObj.BackgroundColor3 = Library.Theme.Accent
             end
@@ -2797,11 +2792,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
             LightDirection = Vector3.new(-1, -1, -1),
         })
 
-        local previewCamera = Instance.new("Camera")
-        previewCamera.FieldOfView = 40
-        previewCamera.Parent = viewport
-        viewport.CurrentCamera = previewCamera
-
         local worldModel = New("WorldModel", { Parent = viewport })
 
         local previewControls = New("Frame", {
@@ -2816,7 +2806,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
             Padding = UDim.new(0, 6),
         })
 
-        return viewportHolder, viewport, worldModel, previewControls, previewCamera
+        return viewportHolder, viewport, worldModel, previewControls
     end
 
     local function makePanel(parent, title, widthScale, xOffset)
@@ -3004,7 +2994,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
     skinListHolder.Size = UDim2.new(1, 0, 1, 0)
     skinListHolder.Position = UDim2.fromOffset(0, 0)
 
-    local viewportHolder, viewport, worldModel, previewControls, previewCamera =
+    local viewportHolder, viewport, worldModel, previewControls =
         makePreviewBlock(previewContent, cfg.DefaultAutoRotate)
 
     local autoRotateRow = New("Frame", {
@@ -3028,7 +3018,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         BorderSizePixel = 0,
         Size = UDim2.fromOffset(8, 8),
         Position = UDim2.fromOffset(3, 3),
-        Visible = cfg.DefaultAutoRotate == true,
+        Visible = cfg.DefaultAutoRotate ~= false,
     })
     Corner(2, autoRotateMark)
     New("TextLabel", {
@@ -3123,16 +3113,17 @@ function Library:_BuildSkinChangerPage(page, cfg)
     local selectedSkinBtn = nil
     local weaponFilter = ""
     local skinFilter = ""
-    local rotationSpeed = cfg.DefaultRotationSpeed or 0.01
-    local previewDistance = 3
-    local previewRotationX = math.rad(-12)
-    local previewRotationY = 0
-    local previewCenter = Vector3.zero
-    local previewDragging = false
-    local previewHovering = false
-    local previewLastPos = Vector2.zero
-    local PREVIEW_DISTANCE_MIN = 1.25
-    local PREVIEW_DISTANCE_MAX = 8
+    local rotationSpeed = cfg.DefaultRotationSpeed or 0.002
+    local zoomMultiplier = cfg.DefaultZoom or 0.25
+    local autoRotate = cfg.DefaultAutoRotate ~= false
+    local previewModel = nil
+    local previewYaw = 0
+    local previewPitch = 0
+    local previewAngle = 0
+    local previewConn = nil
+    local ZOOM_MIN = 0.001
+    local SLIDER_ZOOM_MIN = 0.01
+    local SLIDER_ZOOM_MAX = 100
 
     local function setSliderKnob(sliderBg, fill, knob, value, minV, maxV)
         local alpha = (value - minV) / (maxV - minV)
@@ -3146,33 +3137,38 @@ function Library:_BuildSkinChangerPage(page, cfg)
         knob.Position = UDim2.new(alpha, trackPad, 0, 18)
     end
 
-    local function distanceToSlider(distance)
-        local alpha = (distance - PREVIEW_DISTANCE_MIN) / (PREVIEW_DISTANCE_MAX - PREVIEW_DISTANCE_MIN)
-        return math.clamp(1 - alpha, 0, 1)
+    local function applyPreviewRotation(model, yaw, pitch)
+        if not model then return end
+        local rot = CFrame.Angles(pitch, yaw, 0)
+        pcall(function()
+            if model:IsA("Model") then
+                model:PivotTo(rot)
+            elseif model:IsA("BasePart") then
+                model.CFrame = rot
+            elseif model:IsA("Tool") then
+                model:PivotTo(rot)
+            end
+        end)
     end
 
-    local function sliderToDistance(alpha)
-        alpha = math.clamp(alpha, 0, 1)
-        return PREVIEW_DISTANCE_MIN + (1 - alpha) * (PREVIEW_DISTANCE_MAX - PREVIEW_DISTANCE_MIN)
+    local function applyScrollZoom(current, wheelDelta)
+        local factor = 1.15 ^ wheelDelta
+        return math.max(ZOOM_MIN, current * factor)
     end
 
-    local function syncZoomSlider(sliderBg, fill, knob, distance)
+    local function syncZoomSlider(sliderBg, fill, knob, value)
         setSliderKnob(
             sliderBg,
             fill,
             knob,
-            distanceToSlider(distance),
-            0,
-            1
+            math.clamp(value, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX),
+            SLIDER_ZOOM_MIN,
+            SLIDER_ZOOM_MAX
         )
     end
 
-    local autoRotate = cfg.DefaultAutoRotate == true
-    local previewModel = nil
-    previewDistance = sliderToDistance(math.clamp(cfg.DefaultZoom or 0.92, 0, 1))
-
-    setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.05)
-    syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
+    setSliderKnob(rotSliderBg, rotFill, rotKnob, rotationSpeed, 0.001, 0.01)
+    setSliderKnob(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX)
 
     local function bindSlider(sliderBg, fill, knob, minV, maxV, onChange)
         local dragging = false
@@ -3203,7 +3199,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end)
     end
 
-    bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.05, function(v)
+    bindSlider(rotSliderBg, rotFill, rotKnob, 0.001, 0.01, function(v)
         rotationSpeed = v
         if cfg.OnRotationSpeedChanged then cfg.OnRotationSpeedChanged(v) end
     end)
@@ -3229,7 +3225,6 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     Text = name,
                     TextSize = 12,
                     TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
-                    TextXAlignment = Enum.TextXAlignment.Left,
                     LayoutOrder = i,
                     ZIndex = 4,
                 })
@@ -3242,51 +3237,23 @@ function Library:_BuildSkinChangerPage(page, cfg)
         end
     end
 
-    local function getPreviewVisualParts(model)
-        local parts = {}
-        if model:IsA("BasePart") and model.Transparency < 1 then
-            return { model }
-        end
-
-        for _, name in ipairs({ "CurrentSkin", "Default", "Handle" }) do
-            local part = model:FindFirstChild(name, true)
-            if part and part:IsA("BasePart") and part.Transparency < 1 then
-                table.insert(parts, part)
-            end
-        end
-
-        if #parts == 0 then
-            for _, part in ipairs(model:GetDescendants()) do
-                if part:IsA("MeshPart") and part.Transparency < 1 then
-                    table.insert(parts, part)
-                end
-            end
-        end
-
-        if #parts == 0 then
-            for _, part in ipairs(model:GetDescendants()) do
-                if part:IsA("BasePart") and part.Transparency < 1 then
-                    table.insert(parts, part)
-                end
-            end
-        end
-
-        return parts
-    end
-
     local function getPreviewBounds(model)
         if model:IsA("BasePart") then
             return model.CFrame, model.Size
         end
 
-        local parts = getPreviewVisualParts(model)
-        if #parts == 1 then
-            return parts[1].CFrame, parts[1].Size
+        if model:IsA("Model") and model.GetBoundingBox then
+            local ok, cf, size = pcall(function()
+                return model:GetBoundingBox()
+            end)
+            if ok and cf then
+                return cf, size
+            end
         end
 
-        if #parts > 1 then
-            local minV, maxV
-            for _, part in ipairs(parts) do
+        local minV, maxV
+        for _, part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") then
                 local pos = part.Position
                 if not minV then
                     minV = pos
@@ -3304,141 +3271,41 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     )
                 end
             end
-            if minV and maxV then
-                return CFrame.new((minV + maxV) * 0.5), (maxV - minV)
-            end
         end
 
-        if model:IsA("Model") and model.GetBoundingBox then
-            local ok, cf, size = pcall(function()
-                return model:GetBoundingBox()
-            end)
-            if ok and cf then
-                return cf, size
-            end
+        if minV and maxV then
+            return CFrame.new((minV + maxV) * 0.5), (maxV - minV)
         end
 
         return CFrame.new(), Vector3.new(2, 2, 2)
     end
 
-    local function ensurePreviewPrimary(model)
-        if not model then
-            return nil
-        end
-        if model:IsA("BasePart") then
-            return model
-        end
-        if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
-            return model.PrimaryPart
-        end
-        for _, part in ipairs(model:GetDescendants()) do
-            if part:IsA("BasePart") then
-                model.PrimaryPart = part
-                return part
-            end
-        end
-        return nil
+    local function updatePreviewCamera()
+        if not previewModel then return end
+        local cf, size = getPreviewBounds(previewModel)
+        local dist = math.max(size.X, size.Y, size.Z, 1) * (2.5 / zoomMultiplier)
+        viewport.CurrentCamera = viewport.CurrentCamera or Instance.new("Camera")
+        viewport.CurrentCamera.CFrame = CFrame.new(cf.Position + Vector3.new(dist, dist * 0.35, dist), cf.Position)
     end
-
-    local function centerPreviewModel(model)
-        if not model then
-            return
-        end
-
-        local cf, size = getPreviewBounds(model)
-        local center = cf.Position
-        previewCenter = Vector3.zero
-
-        if model:IsA("Model") or model:IsA("Tool") then
-            ensurePreviewPrimary(model)
-            if model.PrimaryPart then
-                model:PivotTo(CFrame.new(-center))
-            end
-        elseif model:IsA("BasePart") then
-            model.CFrame = CFrame.new(-center)
-        end
-
-        local maxSize = math.max(size.X, size.Y, size.Z, 0.25)
-        previewDistance = math.clamp(maxSize * 0.5 + 1.1, PREVIEW_DISTANCE_MIN, 5)
-        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
-    end
-
-    local function updateOrbitCamera()
-        if not previewModel or not previewCamera then
-            return
-        end
-        local offset = CFrame.new(0, 0, previewDistance)
-        local rotation = CFrame.Angles(0, previewRotationY, 0) * CFrame.Angles(previewRotationX, 0, 0)
-        local camCF = CFrame.new(previewCenter) * rotation * offset
-        previewCamera.CFrame = CFrame.lookAt(camCF.Position, previewCenter)
-    end
-
-    Connect(RunService.RenderStepped, function(dt)
-        if previewModel and previewModel.Parent then
-            if not previewDragging and autoRotate then
-                previewRotationY = previewRotationY + rotationSpeed * dt * 60
-            end
-            updateOrbitCamera()
-        end
-    end)
 
     attachPreviewInput(viewportHolder, function(wheelDelta)
-        local factor = 0.82 ^ wheelDelta
-        previewDistance = math.clamp(previewDistance * factor, PREVIEW_DISTANCE_MIN, PREVIEW_DISTANCE_MAX)
-        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
-        updateOrbitCamera()
+        zoomMultiplier = applyScrollZoom(zoomMultiplier, wheelDelta)
+        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, zoomMultiplier)
+        updatePreviewCamera()
         if cfg.OnZoomChanged then
-            cfg.OnZoomChanged(distanceToSlider(previewDistance))
+            cfg.OnZoomChanged(zoomMultiplier)
         end
     end, function(deltaX, deltaY)
-        previewRotationY = previewRotationY - deltaX * 0.01
-        previewRotationX = previewRotationX - deltaY * 0.01
-        previewRotationX = math.clamp(previewRotationX, -math.pi / 2 + 0.1, math.pi / 2 - 0.1)
-        updateOrbitCamera()
+        previewYaw = previewYaw + deltaX * 0.012
+        previewPitch = math.clamp(previewPitch + deltaY * 0.012, -1.4, 1.4)
+        applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
+        updatePreviewCamera()
     end)
 
-    local previewInput = viewportHolder:FindFirstChildWhichIsA("TextButton", true)
-    if previewInput then
-        Connect(previewInput.InputBegan, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                previewDragging = true
-                previewLastPos = input.Position
-            end
-        end)
-        Connect(UserInputService.InputEnded, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                previewDragging = false
-            end
-        end)
-        Connect(previewInput.MouseEnter, function()
-            previewHovering = true
-        end)
-        Connect(previewInput.MouseLeave, function()
-            previewHovering = false
-        end)
-    end
-
-    bindSlider(zoomSliderBg, zoomFill, zoomKnob, 0, 1, function(v)
-        previewDistance = sliderToDistance(v)
-        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
-        updateOrbitCamera()
+    bindSlider(zoomSliderBg, zoomFill, zoomKnob, SLIDER_ZOOM_MIN, SLIDER_ZOOM_MAX, function(v)
+        zoomMultiplier = v
+        updatePreviewCamera()
         if cfg.OnZoomChanged then cfg.OnZoomChanged(v) end
-    end)
-
-    Connect(zoomSliderBg.InputBegan, function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1
-        and input.UserInputType ~= Enum.UserInputType.Touch then
-            return
-        end
-        local rel = zoomSliderBg.AbsolutePosition.X
-        local width = zoomSliderBg.AbsoluteSize.X - 16
-        local alpha = math.clamp((input.Position.X - rel - 8) / width, 0, 1)
-        previewDistance = sliderToDistance(alpha)
-        syncZoomSlider(zoomSliderBg, zoomFill, zoomKnob, previewDistance)
-        updateOrbitCamera()
-        if cfg.OnZoomChanged then cfg.OnZoomChanged(alpha) end
     end)
 
     local SkinPage = {
@@ -3473,16 +3340,39 @@ function Library:_BuildSkinChangerPage(page, cfg)
             child:Destroy()
         end
         previewModel = nil
-        if not model then
-            return
+        if previewConn then
+            previewConn:Disconnect()
+            previewConn = nil
         end
-
+        if not model then return end
         previewModel = model
         model.Parent = worldModel
-        centerPreviewModel(model)
-        previewRotationX = math.rad(-15)
-        previewRotationY = 0
-        updateOrbitCamera()
+        if model:IsA("Model") then
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                model:PivotTo(CFrame.new())
+            end
+        elseif model:IsA("Tool") then
+            local handle = model:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                model:PivotTo(CFrame.new())
+            end
+        elseif model:IsA("BasePart") then
+            model.CFrame = CFrame.new()
+        end
+        updatePreviewCamera()
+        previewAngle = 0
+        previewYaw = 0
+        previewPitch = 0
+        previewConn = Connect(RunService.RenderStepped, function(dt)
+            if autoRotate and previewModel and previewModel.Parent then
+                previewAngle = previewAngle + dt * (rotationSpeed * 1000)
+            end
+            if previewModel and previewModel.Parent then
+                applyPreviewRotation(previewModel, previewYaw + previewAngle, previewPitch)
+                updatePreviewCamera()
+            end
+        end)
     end
 
     function SkinPage:SetEnabled(state)
@@ -3546,6 +3436,7 @@ function Library:OnUnload(fn)
     end
     return self
 end
+
 function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
