@@ -3216,7 +3216,7 @@ function Library:_BuildSkinChangerPage(page, cfg)
         table.clear(buttons)
     end
 
-    local function populateList(list, items, buttons, selectedName, filterText, onSelect)
+    local function populateList(list, items, buttons, selectedName, filterText, onSelect, getIcon)
         clearListButtons(buttons)
         local filter = string.lower(filterText or "")
         for i, name in ipairs(items) do
@@ -3225,15 +3225,60 @@ function Library:_BuildSkinChangerPage(page, cfg)
                     Parent = list,
                     BackgroundColor3 = self.Theme.PageBackground,
                     AutoButtonColor = false,
-                    Size = UDim2.new(1, 0, 0, 22),
+                    Size = UDim2.new(1, 0, 0, 26),
                     Font = self.Font,
-                    Text = name,
+                    Text = "",
                     TextSize = 12,
-                    TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
                     LayoutOrder = i,
                     ZIndex = 4,
                 })
                 Corner(3, btn)
+
+                local iconId = getIcon and getIcon(name)
+                local textLabel
+                if iconId then
+                    New("ImageLabel", {
+                        Parent = btn,
+                        Name = "Icon",
+                        BackgroundTransparency = 1,
+                        Size = UDim2.fromOffset(18, 18),
+                        Position = UDim2.fromOffset(4, 4),
+                        Image = iconId,
+                        ScaleType = Enum.ScaleType.Fit,
+                        ZIndex = 5,
+                    })
+                    textLabel = New("TextLabel", {
+                        Parent = btn,
+                        Name = "Label",
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(26, 0),
+                        Size = UDim2.new(1, -30, 1, 0),
+                        Font = self.Font,
+                        Text = name,
+                        TextSize = 12,
+                        TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                        ZIndex = 5,
+                    })
+                else
+                    textLabel = New("TextLabel", {
+                        Parent = btn,
+                        Name = "Label",
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(4, 0),
+                        Size = UDim2.new(1, -8, 1, 0),
+                        Font = self.Font,
+                        Text = name,
+                        TextSize = 12,
+                        TextColor3 = name == selectedName and self.Theme.Accent or self.Theme.Text,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                        ZIndex = 5,
+                    })
+                end
+
+                btn._label = textLabel
                 table.insert(buttons, btn)
                 Connect(btn.MouseButton1Click, function()
                     onSelect(name, btn)
@@ -3320,23 +3365,35 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     function SkinPage:SetWeaponList(items, selected)
         populateList(weaponList, items, weaponButtons, selected, weaponFilter, function(name, btn)
-            if selectedWeaponBtn then
-                selectedWeaponBtn.TextColor3 = Library.Theme.Text
+            if selectedWeaponBtn and selectedWeaponBtn._label then
+                selectedWeaponBtn._label.TextColor3 = Library.Theme.Text
             end
             selectedWeaponBtn = btn
-            btn.TextColor3 = Library.Theme.Accent
+            if btn._label then
+                btn._label.TextColor3 = Library.Theme.Accent
+            end
             if cfg.OnWeaponSelected then cfg.OnWeaponSelected(name) end
+        end, function(name)
+            if cfg.GetWeaponIcon then
+                return cfg.GetWeaponIcon(name)
+            end
         end)
     end
 
     function SkinPage:SetSkinList(items, selected)
         populateList(skinList, items, skinButtons, selected, skinFilter, function(name, btn)
-            if selectedSkinBtn then
-                selectedSkinBtn.TextColor3 = Library.Theme.Text
+            if selectedSkinBtn and selectedSkinBtn._label then
+                selectedSkinBtn._label.TextColor3 = Library.Theme.Text
             end
             selectedSkinBtn = btn
-            btn.TextColor3 = Library.Theme.Accent
+            if btn._label then
+                btn._label.TextColor3 = Library.Theme.Accent
+            end
             if cfg.OnSkinSelected then cfg.OnSkinSelected(name) end
+        end, function(name)
+            if cfg.GetSkinIcon then
+                return cfg.GetSkinIcon(name)
+            end
         end)
     end
 
