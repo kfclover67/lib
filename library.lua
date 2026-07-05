@@ -3440,6 +3440,22 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         Size = UDim2.new(1, 0, 0, 380),
     })
 
+    local refreshBtn = New("TextButton", {
+        Parent = root,
+        BackgroundColor3 = self.Theme.Inline,
+        AutoButtonColor = false,
+        Text = "REFRESH",
+        Font = self.Font,
+        TextSize = 13,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Position = UDim2.new(1, -64, 0, 0),
+        Size = UDim2.new(0, 60, 0, 20),
+        ZIndex = 2,
+    })
+    Corner(4, refreshBtn)
+    self:AddToRegistry(refreshBtn, "BackgroundColor3", "Inline")
+
     local viewportHolder = New("Frame", {
         Parent = root,
         BackgroundColor3 = self.Theme.Inline,
