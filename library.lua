@@ -3445,7 +3445,7 @@ function Library:_BuildEspPreviewInto(parent, cfg)
         BackgroundColor3 = self.Theme.Inline,
         BorderSizePixel = 0,
         Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.new(1, 0, 1, -108),
+        Size = UDim2.new(1, 0, 1, -84),
     })
     Corner(4, viewportHolder)
     self:AddToRegistry(viewportHolder, "BackgroundColor3", "Inline")
@@ -3460,11 +3460,12 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     })
 
     local overlay = New("Frame", {
-        Parent = viewport,
+        Parent = viewportHolder,
         BackgroundTransparency = 1,
+        Active = false,
         Size = UDim2.fromScale(1, 1),
-        ClipsDescendants = false,
-        ZIndex = 10,
+        ClipsDescendants = true,
+        ZIndex = 11,
     })
 
     local worldModel = New("WorldModel", { Parent = viewport })
@@ -3475,39 +3476,14 @@ function Library:_BuildEspPreviewInto(parent, cfg)
     local previewControls = New("Frame", {
         Parent = root,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 0, 1, -108),
-        Size = UDim2.new(1, 0, 0, 108),
+        Position = UDim2.new(0, 0, 1, -84),
+        Size = UDim2.new(1, 0, 0, 84),
     })
     New("UIListLayout", {
         Parent = previewControls,
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 6),
     })
-
-    local refreshRow = New("Frame", {
-        Parent = previewControls,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 24),
-        LayoutOrder = 0,
-    })
-    local refreshBtn = New("TextButton", {
-        Parent = refreshRow,
-        BackgroundColor3 = self.Theme.Inline,
-        AutoButtonColor = false,
-        Size = UDim2.fromOffset(72, 24),
-        Position = UDim2.new(1, -72, 0, 0),
-        Font = self.Font,
-        Text = "refresh",
-        TextSize = 12,
-        TextColor3 = self.Theme.Text,
-    })
-    Corner(4, refreshBtn)
-    self:AddToRegistry(refreshBtn, "BackgroundColor3", "Inline")
-    Connect(refreshBtn.MouseButton1Click, function()
-        if cfg.OnRefresh then
-            cfg.OnRefresh()
-        end
-    end)
 
     local autoRotateRow = New("Frame", {
         Parent = previewControls,
