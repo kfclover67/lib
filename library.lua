@@ -1,3 +1,5 @@
+local version = "v2.0.1"
+warn(version)
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -266,7 +268,13 @@ local function resolveDropdownDefault(values, default, multi)
     if multi then
         if type(default) == "table" then
             local t = {}
-            for _, v in pairs(default) do t[v] = true end
+            for k, v in pairs(default) do
+                if type(k) == "string" and v == true then
+                    t[k] = true
+                elseif type(v) == "string" then
+                    t[v] = true
+                end
+            end
             return t
         end
         return {}
