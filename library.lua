@@ -666,8 +666,8 @@ local function nextAddonOrder(holder)
     return n
 end
 
-function Library:_RegisterSearchFromRow(row, text, id)
-    local ctx = self._currentSectionCtx
+function Library:_RegisterSearchFromRow(row, text, id, ctx)
+    ctx = ctx or self._currentSectionCtx
     if not ctx or not ctx.Tab then return end
     text = text or id
     if not text or text == "" then return end
@@ -683,6 +683,26 @@ function Library:_RegisterSearchFromRow(row, text, id)
         Row = row,
         ScrollFrame = ctx.ScrollFrame,
     })
+end
+
+local function searchEntryMatches(entry, query)
+    local hay = string.lower(
+        (entry.Text or "") .. " "
+        .. (entry.Id or ""):gsub("_", " ") .. " "
+        .. (entry.TabName or "") .. " "
+        .. (entry.GroupTitle or "")
+    )
+    local compactHay = hay:gsub("%s+", "")
+    local compactQuery = query:gsub("%s+", "")
+    if compactQuery ~= "" and compactHay:find(compactQuery, 1, true) then
+        return true
+    end
+    for word in query:gmatch("%S+") do
+        if not hay:find(word, 1, true) then
+            return false
+        end
+    end
+    return query ~= ""
 end
 
 function Library:_FlashSearchRow(row)
@@ -720,8 +740,8 @@ function Library:_NavigateToSearchEntry(entry)
 end
 
 function Library:_CreateTabSearchHeader(page, Tab)
-    local HEADER_H = 50
-    local SEARCH_H = 32
+    local HEADER_H = 36
+    local SEARCH_H = 28
 
     local header = New("Frame", {
         Name = "SearchHeader",
@@ -731,12 +751,73 @@ function Library:_CreateTabSearchHeader(page, Tab)
         ZIndex = 2,
     })
 
+    New("UIListLayout", {
+        Parent = header,
+        FillDirection = Enum.FillDirection.Horizontal,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 12),
+    })
+
+    local tabInfo = New("Frame", {
+        Name = "TabInfo",
+        Parent = header,
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.X,
+        Size = UDim2.fromOffset(0, HEADER_H),
+        LayoutOrder = 1,
+    })
+    New("UIListLayout", {
+        Parent = tabInfo,
+        FillDirection = Enum.FillDirection.Horizontal,
+        VerticalAlignment = Enum.VerticalAlignment.Center,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 8),
+    })
+
+    if Tab.Icon then
+        local tabIcon = New("ImageLabel", {
+            Name = "TabIcon",
+            Parent = tabInfo,
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(18, 18),
+            Image = Tab.Icon,
+            ImageColor3 = self.Theme.Accent,
+            LayoutOrder = 1,
+        })
+        self:AddToRegistry(tabIcon, "ImageColor3", "Accent")
+    else
+        local dot = New("Frame", {
+            Parent = tabInfo,
+            Size = UDim2.fromOffset(8, 8),
+            BackgroundColor3 = self.Theme.Accent,
+            BorderSizePixel = 0,
+            LayoutOrder = 1,
+        })
+        Corner(4, dot)
+        self:AddToRegistry(dot, "BackgroundColor3", "Accent")
+    end
+
+    local tabNameLabel = New("TextLabel", {
+        Name = "TabName",
+        Parent = tabInfo,
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.XY,
+        Font = self.FontBold,
+        Text = Tab.Name or "tab",
+        TextSize = 16,
+        TextColor3 = self.Theme.LightText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 2,
+    })
+    self:AddToRegistry(tabNameLabel, "TextColor3", "LightText")
+
     local searchWrap = New("Frame", {
         Name = "SearchBar",
         Parent = header,
         BackgroundColor3 = self.Theme.Inline,
         Size = UDim2.new(1, 0, 0, SEARCH_H),
-        Position = UDim2.fromOffset(0, 4),
+        LayoutOrder = 2,
         BorderSizePixel = 0,
         ClipsDescendants = true,
     })
@@ -748,7 +829,7 @@ function Library:_CreateTabSearchHeader(page, Tab)
         Name = "SearchIcon",
         Parent = searchWrap,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(10, 7),
+        Position = UDim2.fromOffset(9, 5),
         Size = UDim2.fromOffset(18, 18),
         Image = self.SearchIconAsset,
         ScaleType = Enum.ScaleType.Fit,
@@ -757,14 +838,14 @@ function Library:_CreateTabSearchHeader(page, Tab)
     local searchBox = New("TextBox", {
         Parent = searchWrap,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(34, 0),
-        Size = UDim2.new(1, -42, 1, 0),
+        Position = UDim2.fromOffset(32, 0),
+        Size = UDim2.new(1, -38, 1, 0),
         Font = self.Font,
         Text = "",
         PlaceholderText = "search",
         PlaceholderColor3 = self.Theme.DarkText,
         TextColor3 = self.Theme.LightText,
-        TextSize = 14,
+        TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
         ClearTextOnFocus = false,
     })
@@ -772,21 +853,28 @@ function Library:_CreateTabSearchHeader(page, Tab)
 
     local results = New("Frame", {
         Name = "SearchResults",
-        Parent = header,
+        Parent = page,
         BackgroundColor3 = self.Theme.SectionBackground,
         BorderSizePixel = 0,
-        Position = UDim2.new(0, 0, 0, SEARCH_H + 8),
+        Position = UDim2.new(0, 0, 0, HEADER_H + 6),
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         Visible = false,
         ClipsDescendants = true,
-        ZIndex = 10,
+        ZIndex = 20,
     })
     Corner(6, results)
     self:AddToRegistry(results, "BackgroundColor3", "SectionBackground")
     self:AddToRegistry(Stroke(results, self.Theme.Border, 1, 0), "Color", "Border")
-    New("UISizeConstraint", { Parent = results, MaxSize = Vector2.new(10000, 220) })
+    New("UISizeConstraint", { Parent = results, MaxSize = Vector2.new(10000, 240) })
     Padding(results, 4)
+
+    local function alignResults()
+        local tabW = tabInfo.AbsoluteSize.X
+        local gap = 12
+        results.Position = UDim2.fromOffset(tabW + gap, HEADER_H + 6)
+        results.Size = UDim2.new(1, -(tabW + gap), 0, 0)
+    end
 
     local resultsList = New("ScrollingFrame", {
         Parent = results,
@@ -931,16 +1019,12 @@ function Library:_CreateTabSearchHeader(page, Tab)
 
         local matches = {}
         for _, entry in ipairs(self.SearchIndex) do
-            local hay = string.lower(
-                (entry.Text or "") .. " "
-                .. (entry.Id or "") .. " "
-                .. (entry.TabName or "") .. " "
-                .. (entry.GroupTitle or "")
-            )
-            if hay:find(query, 1, true) then
+            if searchEntryMatches(entry, query) then
                 table.insert(matches, entry)
             end
         end
+
+        alignResults()
 
         if #matches == 0 then
             local empty = New("TextLabel", {
@@ -1713,7 +1797,7 @@ function Library:_BuildSection(container, ctx)
     local Section = { Container = container, _searchCtx = ctx }
 
     local function registerSearch(row, text, id)
-        Library:_RegisterSearchFromRow(row, text, id)
+        Library:_RegisterSearchFromRow(row, text, id, ctx)
     end
 
     function Section:AddLabel(text, doesWrap)
@@ -2051,7 +2135,7 @@ function Library:_BuildSection(container, ctx)
         return Input
     end
 
-    function Section:AddDropdown(id, info) return Library:_Dropdown(container, id, info) end
+    function Section:AddDropdown(id, info) return Library:_Dropdown(container, id, info, ctx) end
 
     function Section:AddKeyPicker(id, info)
         info = info or {}
@@ -2126,7 +2210,7 @@ function Library:_UpdateDependencies()
     end
 end
 
-function Library:_Dropdown(container, id, info)
+function Library:_Dropdown(container, id, info, ctx)
     info = info or {}
     local multi    = info.Multi or false
     local values   = info.Values or {}
@@ -2267,7 +2351,7 @@ function Library:_Dropdown(container, id, info)
     rebuild()
     refreshDisplay()
     Library.Options[id] = Dropdown
-    Library:_RegisterSearchFromRow(row, (hasLabel and info.Text) or id, id)
+    Library:_RegisterSearchFromRow(row, (hasLabel and info.Text) or id, id, ctx)
     return Dropdown
 end
 
