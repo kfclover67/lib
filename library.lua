@@ -3947,7 +3947,7 @@ function Library:CreatePreviewPanel(cfg)
         }
     end
 
-    local getPlayer = cfg.GetPlayer or function() return LocalPlayer end
+    local defaultPreviewModel = cfg.Model or "rbxassetid://14966982841"
     local panel = New("Frame", {
         Name = "PreviewPanel",
         Parent = self.ScreenGui,
@@ -4208,36 +4208,8 @@ function Library:CreatePreviewPanel(cfg)
         )
     end
 
-    local function preparePreviewClone(char)
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local clone
-
-        if hum then
-            pcall(function()
-                char.Archivable = true
-            end)
-        end
-
-        local ok
-        ok, clone = pcall(function()
-            char.Archivable = true
-            return char:Clone()
-        end)
-        if not ok or not clone or not clone:IsA("Model") then
-            if hum then
-                local descOk, result = pcall(function()
-                    return Players:CreateHumanoidModelFromDescription(hum:GetAppliedDescription(), hum.RigType)
-                end)
-                if descOk and result and result:IsA("Model") then
-                    clone = result
-                end
-            end
-            if not clone then
-                return nil
-            end
-        end
-
-        for _, inst in ipairs(clone:GetDescendants()) do
+    local function stripPreviewModel(model)
+        for _, inst in ipairs(model:GetDescendants()) do
             if inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ForceField") then
                 inst:Destroy()
             elseif inst:IsA("BasePart") then
@@ -4246,52 +4218,86 @@ function Library:CreatePreviewPanel(cfg)
             end
         end
 
-        local animate = clone:FindFirstChild("Animate")
+        local animate = model:FindFirstChild("Animate")
         if animate then
             animate:Destroy()
         end
 
-        if not clone.PrimaryPart then
-            local root = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChildWhichIsA("BasePart", true)
-            if not root then
-                clone:Destroy()
-                return nil
+        if not model.PrimaryPart then
+            local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart", true)
+            if root then
+                model.PrimaryPart = root
             end
-            clone.PrimaryPart = root
         end
 
-        local cloneHum = clone:FindFirstChildOfClass("Humanoid")
-        if cloneHum then
-            cloneHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         end
-
-        clone.Parent = worldModel
-        centerPreviewModel(clone)
-        return clone
     end
 
-    local function rebuildCharacter()
+    local function loadPreviewModel()
         if previewChar then
             previewChar:Destroy()
             previewChar = nil
         end
 
-        local player = getPlayer()
-        if not player then
+        local modelSource = cfg.Model or defaultPreviewModel
+        local model
+
+        if typeof(modelSource) == "Instance" and modelSource:IsA("Model") then
+            local ok, clone = pcall(function()
+                modelSource.Archivable = true
+                return modelSource:Clone()
+            end)
+            if ok and clone and clone:IsA("Model") then
+                model = clone
+            end
+        elseif type(modelSource) == "string" then
+            local ok, loaded = pcall(function()
+                local objects = game:GetObjects(modelSource)
+                return objects and objects[1]
+            end)
+            if ok and loaded and loaded:IsA("Model") then
+                model = loaded
+            end
+
+            if not model then
+                local assetId = tonumber(modelSource:match("%d+"))
+                if assetId then
+                    ok, loaded = pcall(function()
+                        local asset = game:GetService("InsertService"):LoadAsset(assetId)
+                        return asset and asset:GetChildren()[1]
+                    end)
+                    if ok and loaded and loaded:IsA("Model") then
+                        model = loaded
+                    end
+                end
+            end
+        end
+
+        if not model or not model:IsA("Model") then
             return
         end
 
-        local char = player.Character
-        if not char or not char:IsA("Model") then
+        local scale = cfg.ModelScale or 1
+        if scale ~= 1 and model.ScaleTo then
+            pcall(function()
+                model:ScaleTo(scale)
+            end)
+        end
+
+        stripPreviewModel(model)
+        if not model.PrimaryPart then
+            model:Destroy()
             return
         end
 
-        if not char:FindFirstChild("HumanoidRootPart") then
-            char:WaitForChild("HumanoidRootPart", 3)
-        end
+        model.Parent = worldModel
+        centerPreviewModel(model)
+        previewChar = model
 
-        previewChar = preparePreviewClone(char)
-        if previewChar and cfg.OnCharacter then
+        if cfg.OnCharacter then
             pcall(cfg.OnCharacter, previewChar)
         end
         updatePreviewCamera()
@@ -4301,13 +4307,6 @@ function Library:CreatePreviewPanel(cfg)
         panel.Visible = false
     end)
 
-    local previewPlayer = getPlayer()
-    if previewPlayer then
-        Connect(previewPlayer.CharacterAdded, function()
-            task.defer(rebuildCharacter)
-        end)
-    end
-
     local api = {
         Panel = panel,
         Viewport = viewport,
@@ -4315,7 +4314,8 @@ function Library:CreatePreviewPanel(cfg)
         EspAnchor = espAnchor,
         Overlay = espAnchor,
         WorldModel = worldModel,
-        RebuildCharacter = rebuildCharacter,
+        LoadModel = loadPreviewModel,
+        RebuildCharacter = loadPreviewModel,
         GetCharacter = function()
             return previewChar
         end,
@@ -4335,7 +4335,7 @@ function Library:CreatePreviewPanel(cfg)
     function api:SetVisible(v)
         panel.Visible = v and true or false
         if v then
-            rebuildCharacter()
+            loadPreviewModel()
         end
     end
 
@@ -4358,7 +4358,7 @@ function Library:CreatePreviewPanel(cfg)
 
     task.defer(function()
         for _ = 1, 8 do
-            rebuildCharacter()
+            loadPreviewModel()
             if previewChar then
                 break
             end
