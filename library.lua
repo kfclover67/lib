@@ -3940,6 +3940,7 @@ function Library:CreatePreviewPanel(cfg)
     if not self.ScreenGui then
         return {
             Panel = { Visible = false },
+            EspAnchor = nil,
             Overlay = nil,
             SetVisible = function() end,
             RebuildCharacter = function() end,
@@ -4029,18 +4030,23 @@ function Library:CreatePreviewPanel(cfg)
     end
 
     local previewCam = Instance.new("Camera")
-    previewCam.Parent = worldModel
+    previewCam.FieldOfView = 50
+    previewCam.Parent = viewport
     viewport.CurrentCamera = previewCam
+    viewport.Ambient = Color3.fromRGB(180, 180, 190)
+    viewport.LightColor = Color3.fromRGB(255, 255, 255)
+    viewport.LightDirection = Vector3.new(-1, -1, -1)
 
-    local overlay = New("Frame", {
-        Name = "EspOverlayHost",
+    local espAnchor = New("Frame", {
+        Name = "EspAnchor",
         Parent = viewport,
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(0, 0),
         Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.fromScale(1, 1),
+        Size = UDim2.fromOffset(0, 0),
         ZIndex = 10,
         ClipsDescendants = false,
+        Visible = true,
     })
 
     local previewChar
@@ -4306,7 +4312,8 @@ function Library:CreatePreviewPanel(cfg)
         Panel = panel,
         Viewport = viewport,
         Camera = previewCam,
-        Overlay = overlay,
+        EspAnchor = espAnchor,
+        Overlay = espAnchor,
         WorldModel = worldModel,
         RebuildCharacter = rebuildCharacter,
         GetCharacter = function()
