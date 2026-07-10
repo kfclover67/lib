@@ -1,5 +1,3 @@
-local version = "v2.0.1"
-warn(version)
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -81,6 +79,8 @@ local Library = {
     CustomFontAssets = {},
     DependencyBoxes = {},
     KeybindEntries = {},
+    SearchIndex = {},
+    SearchIconAsset = "rbxassetid://72296609649861",
     Theme = {
         DarkBackground    = Color3.fromRGB(11, 11, 13),
         PageBackground    = Color3.fromRGB(15, 15, 17),
@@ -666,6 +666,310 @@ local function nextAddonOrder(holder)
     return n
 end
 
+function Library:_RegisterSearchFromRow(row, text, id)
+    local ctx = self._currentSectionCtx
+    if not ctx or not ctx.Tab then return end
+    text = text or id
+    if not text or text == "" then return end
+    local tab = ctx.Tab
+    table.insert(self.SearchIndex, {
+        Text = text,
+        Id = id,
+        GroupTitle = ctx.GroupTitle or "",
+        TabName = tab.Name,
+        TabIcon = tab.Icon,
+        TabSelect = tab.Select,
+        TabboxSelect = ctx.TabboxSelect,
+        Row = row,
+        ScrollFrame = ctx.ScrollFrame,
+    })
+end
+
+function Library:_FlashSearchRow(row)
+    if not row or not row.Parent then return end
+    local flash = New("Frame", {
+        Parent = row,
+        BackgroundColor3 = self.Theme.Accent,
+        BackgroundTransparency = 0.82,
+        BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1),
+        ZIndex = 5,
+    })
+    Corner(4, flash)
+    Tween(flash, 0.35, { BackgroundTransparency = 1 })
+    task.delay(0.4, function()
+        if flash.Parent then flash:Destroy() end
+    end)
+end
+
+function Library:_NavigateToSearchEntry(entry)
+    if not entry then return end
+    self:CloseAllPopups()
+    if entry.TabSelect then entry.TabSelect() end
+    if entry.TabboxSelect then entry.TabboxSelect() end
+    task.defer(function()
+        RunService.Heartbeat:Wait()
+        local scroll = entry.ScrollFrame
+        local row = entry.Row
+        if scroll and row and row.Parent then
+            local relY = row.AbsolutePosition.Y - scroll.AbsolutePosition.Y + scroll.CanvasPosition.Y
+            scroll.CanvasPosition = Vector2.new(0, math.max(0, relY - 20))
+            self:_FlashSearchRow(row)
+        end
+    end)
+end
+
+function Library:_CreateTabSearchHeader(page, Tab)
+    local HEADER_H = 50
+    local SEARCH_H = 32
+
+    local header = New("Frame", {
+        Name = "SearchHeader",
+        Parent = page,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, HEADER_H),
+        ZIndex = 2,
+    })
+
+    local searchWrap = New("Frame", {
+        Name = "SearchBar",
+        Parent = header,
+        BackgroundColor3 = self.Theme.Inline,
+        Size = UDim2.new(1, 0, 0, SEARCH_H),
+        Position = UDim2.fromOffset(0, 4),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    })
+    self:AddToRegistry(searchWrap, "BackgroundColor3", "Inline")
+    self:AddToRegistry(Stroke(searchWrap, self.Theme.Border, 1, 0), "Color", "Border")
+    Corner(1, searchWrap)
+
+    New("ImageLabel", {
+        Name = "SearchIcon",
+        Parent = searchWrap,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(10, 7),
+        Size = UDim2.fromOffset(18, 18),
+        Image = self.SearchIconAsset,
+        ScaleType = Enum.ScaleType.Fit,
+    })
+
+    local searchBox = New("TextBox", {
+        Parent = searchWrap,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(34, 0),
+        Size = UDim2.new(1, -42, 1, 0),
+        Font = self.Font,
+        Text = "",
+        PlaceholderText = "search",
+        PlaceholderColor3 = self.Theme.DarkText,
+        TextColor3 = self.Theme.LightText,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = false,
+    })
+    self:AddToRegistry(searchBox, "TextColor3", "LightText")
+
+    local results = New("Frame", {
+        Name = "SearchResults",
+        Parent = header,
+        BackgroundColor3 = self.Theme.SectionBackground,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0, SEARCH_H + 8),
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Visible = false,
+        ClipsDescendants = true,
+        ZIndex = 10,
+    })
+    Corner(6, results)
+    self:AddToRegistry(results, "BackgroundColor3", "SectionBackground")
+    self:AddToRegistry(Stroke(results, self.Theme.Border, 1, 0), "Color", "Border")
+    New("UISizeConstraint", { Parent = results, MaxSize = Vector2.new(10000, 220) })
+    Padding(results, 4)
+
+    local resultsList = New("ScrollingFrame", {
+        Parent = results,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -8, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.new(),
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = self.Theme.Accent,
+        Active = true,
+        ZIndex = 11,
+    })
+    New("UIListLayout", {
+        Parent = resultsList,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 0),
+    })
+
+    local resultRows = {}
+
+    local function clearResults()
+        for _, row in ipairs(resultRows) do row:Destroy() end
+        table.clear(resultRows)
+        results.Visible = false
+    end
+
+    local function addResultRow(entry, layoutOrder)
+        local rowBtn = New("TextButton", {
+            Parent = resultsList,
+            BackgroundColor3 = self.Theme.Inline,
+            BackgroundTransparency = 1,
+            AutoButtonColor = false,
+            Text = "",
+            Size = UDim2.new(1, 0, 0, 30),
+            LayoutOrder = layoutOrder,
+            ZIndex = 12,
+        })
+        Corner(4, rowBtn)
+
+        local inner = New("Frame", {
+            Parent = rowBtn,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -8, 1, 0),
+            Position = UDim2.fromOffset(4, 0),
+        })
+        New("UIListLayout", {
+            Parent = inner,
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 6),
+        })
+
+        if entry.TabIcon then
+            local icon = New("ImageLabel", {
+                Parent = inner,
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(14, 14),
+                Image = entry.TabIcon,
+                ImageColor3 = self.Theme.Accent,
+                LayoutOrder = 1,
+            })
+            self:AddToRegistry(icon, "ImageColor3", "Accent")
+        else
+            local dot = New("Frame", {
+                Parent = inner,
+                Size = UDim2.fromOffset(6, 6),
+                BackgroundColor3 = self.Theme.Accent,
+                BorderSizePixel = 0,
+                LayoutOrder = 1,
+            })
+            Corner(3, dot)
+            self:AddToRegistry(dot, "BackgroundColor3", "Accent")
+        end
+
+        New("TextLabel", {
+            Parent = inner,
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.X,
+            Size = UDim2.fromScale(0, 1),
+            Font = self.Font,
+            Text = entry.TabName or "tab",
+            TextSize = 13,
+            TextColor3 = self.Theme.DarkText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 2,
+        })
+
+        New("TextLabel", {
+            Parent = inner,
+            BackgroundTransparency = 1,
+            AutomaticSize = Enum.AutomaticSize.X,
+            Size = UDim2.fromScale(0, 1),
+            Font = self.Font,
+            Text = entry.Text or "",
+            TextSize = 13,
+            TextColor3 = self.Theme.LightText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 3,
+        })
+
+        if entry.GroupTitle and entry.GroupTitle ~= "" then
+            New("TextLabel", {
+                Parent = inner,
+                BackgroundTransparency = 1,
+                AutomaticSize = Enum.AutomaticSize.X,
+                Size = UDim2.fromScale(0, 1),
+                Font = self.Font,
+                Text = "· " .. entry.GroupTitle,
+                TextSize = 12,
+                TextColor3 = self.Theme.DarkText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                LayoutOrder = 4,
+            })
+        end
+
+        Connect(rowBtn.MouseEnter, function()
+            rowBtn.BackgroundTransparency = 0
+        end)
+        Connect(rowBtn.MouseLeave, function()
+            rowBtn.BackgroundTransparency = 1
+        end)
+        Connect(rowBtn.MouseButton1Click, function()
+            clearResults()
+            searchBox.Text = ""
+            self:_NavigateToSearchEntry(entry)
+        end)
+
+        table.insert(resultRows, rowBtn)
+    end
+
+    local function refreshResults()
+        for _, row in ipairs(resultRows) do row:Destroy() end
+        table.clear(resultRows)
+
+        local query = string.lower((searchBox.Text or ""):match("^%s*(.-)%s*$") or "")
+        if query == "" then
+            results.Visible = false
+            return
+        end
+
+        local matches = {}
+        for _, entry in ipairs(self.SearchIndex) do
+            local hay = string.lower(
+                (entry.Text or "") .. " "
+                .. (entry.Id or "") .. " "
+                .. (entry.TabName or "") .. " "
+                .. (entry.GroupTitle or "")
+            )
+            if hay:find(query, 1, true) then
+                table.insert(matches, entry)
+            end
+        end
+
+        if #matches == 0 then
+            local empty = New("TextLabel", {
+                Parent = resultsList,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 28),
+                Font = self.Font,
+                Text = "no results",
+                TextSize = 13,
+                TextColor3 = self.Theme.DarkText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            })
+            table.insert(resultRows, empty)
+            results.Visible = true
+            return
+        end
+
+        for i, entry in ipairs(matches) do
+            if i > 24 then break end
+            addResultRow(entry, i)
+        end
+        results.Visible = true
+    end
+
+    Connect(searchBox:GetPropertyChangedSignal("Text"), refreshResults)
+
+    return HEADER_H
+end
+
 function Library:CreateWindow(cfg)
     cfg = cfg or {}
     local title, titleIcon = parseTitle(cfg.Title, cfg.Icon or cfg.TitleIcon)
@@ -923,9 +1227,26 @@ function Library:CreateWindow(cfg)
         })
         Padding(page, 14)
 
+        local Tab = {
+            Page = page,
+            Button = tabButton,
+            Name = name,
+            Icon = imageId,
+            Select = nil,
+        }
+        local headerH = Library:_CreateTabSearchHeader(page, Tab)
+
+        local contentArea = New("Frame", {
+            Name = "ContentArea",
+            Parent = page,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(0, headerH + 8),
+            Size = UDim2.new(1, 0, 1, -(headerH + 8)),
+        })
+
         local left = New("ScrollingFrame", {
             Name = "Left",
-            Parent = page,
+            Parent = contentArea,
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Size = UDim2.new(0.5, -7, 1, 0),
@@ -939,7 +1260,7 @@ function Library:CreateWindow(cfg)
 
         local right = New("ScrollingFrame", {
             Name = "Right",
-            Parent = page,
+            Parent = contentArea,
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Size = UDim2.new(0.5, -7, 1, 0),
@@ -951,7 +1272,8 @@ function Library:CreateWindow(cfg)
         })
         New("UIListLayout", { Parent = right, Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder })
 
-        local Tab = { Page = page, LeftColumn = left, RightColumn = right, Button = tabButton }
+        Tab.LeftColumn = left
+        Tab.RightColumn = right
 
         local function select()
             Library:CloseAllPopups()
@@ -1041,7 +1363,11 @@ function Library:CreateWindow(cfg)
                 Library:AddToRegistry(sl, "TextColor3", "DarkText")
             end
 
-            return Library:_BuildSection(section)
+            return Library:_BuildSection(section, {
+                Tab = Tab,
+                GroupTitle = sTitle,
+                ScrollFrame = parentColumn,
+            })
         end
 
         local function makeTabbox(parentColumn)
@@ -1172,7 +1498,12 @@ function Library:CreateWindow(cfg)
                     selectTab(tab)
                 end
 
-                return Library:_BuildSection(page)
+                return Library:_BuildSection(page, {
+                    Tab = Tab,
+                    GroupTitle = name,
+                    ScrollFrame = parentColumn,
+                    TabboxSelect = function() selectTab(tab) end,
+                })
             end
 
             return Tabbox
@@ -1375,8 +1706,15 @@ local function resolveIgnoreConfig(info)
     return Library._ignoreConfig
 end
 
-function Library:_BuildSection(container)
-    local Section = { Container = container }
+function Library:_BuildSection(container, ctx)
+    ctx = ctx or {}
+    local prevCtx = self._currentSectionCtx
+    self._currentSectionCtx = ctx
+    local Section = { Container = container, _searchCtx = ctx }
+
+    local function registerSearch(row, text, id)
+        Library:_RegisterSearchFromRow(row, text, id)
+    end
 
     function Section:AddLabel(text, doesWrap)
         local row = makeRow(container, doesWrap and 0 or 19)
@@ -1476,6 +1814,7 @@ function Library:_BuildSection(container)
             end)
             local Button = { Instance = btn, Type = "Button", Id = c.Id, IgnoreConfig = true }
             if c.Id then Library.Options[c.Id] = Button end
+            registerSearch(rowHolder, c.Text or "button", c.Id)
             function Button:SetText(t) btn.Text = t return Button end
             function Button:AddButton(a2, b2) return build(normalizeButton(a2, b2)) end
             return Button
@@ -1554,6 +1893,7 @@ function Library:_BuildSection(container)
         Toggle:SetValue(Toggle.Value)
 
         Library.Toggles[id] = Toggle
+        registerSearch(row, info.Text or id, id)
         return Toggle
     end
 
@@ -1646,6 +1986,7 @@ function Library:_BuildSection(container)
             end)
             Slider:SetValue(default, true)
             Library.Options[sid] = Slider
+            registerSearch(row, sinfo.Text or sid, sid)
             return Slider
         end
         return buildSlider(id, info)
@@ -1706,6 +2047,7 @@ function Library:_BuildSection(container)
             Connect(textBox:GetPropertyChangedSignal("Text"), function() Input.Value = textBox.Text end)
         end
         Library.Options[id] = Input
+        registerSearch(row, info.Text or id, id)
         return Input
     end
 
@@ -1721,6 +2063,7 @@ function Library:_BuildSection(container)
         })
         Library:AddToRegistry(l, "TextColor3", "Text")
         local holder = makeAddonHolder(row)
+        registerSearch(row, info.Text or id, id)
         return Library:_KeyPicker(holder, id, info)
     end
 
@@ -1734,6 +2077,7 @@ function Library:_BuildSection(container)
         })
         Library:AddToRegistry(l, "TextColor3", "Text")
         local holder = makeAddonHolder(row)
+        registerSearch(row, info.Title or info.Text or id, id)
         return Library:_ColorPicker(holder, id, info)
     end
 
@@ -1748,7 +2092,7 @@ function Library:_BuildSection(container)
         })
         New("UIListLayout", { Parent = box, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
         box:SetAttribute("VoidRowOrder", 0)
-        local inner = Library:_BuildSection(box)
+        local inner = Library:_BuildSection(box, Section._searchCtx or ctx)
         inner._depBox = box
         inner._deps = {}
         function inner:SetupDependencies(list)
@@ -1759,6 +2103,7 @@ function Library:_BuildSection(container)
         return inner
     end
 
+    self._currentSectionCtx = prevCtx
     return Section
 end
 
@@ -1922,6 +2267,7 @@ function Library:_Dropdown(container, id, info)
     rebuild()
     refreshDisplay()
     Library.Options[id] = Dropdown
+    Library:_RegisterSearchFromRow(row, (hasLabel and info.Text) or id, id)
     return Dropdown
 end
 
