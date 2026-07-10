@@ -3950,7 +3950,7 @@ function Library:CreatePreviewPanel(cfg)
     local panel = New("Frame", {
         Name = "PreviewPanel",
         Parent = self.ScreenGui,
-        Size = UDim2.fromOffset(280, 368),
+        Size = UDim2.fromOffset(280, 336),
         Position = cfg.Position or UDim2.fromOffset(740, 80),
         BackgroundColor3 = self.Theme.DarkBackground,
         BorderSizePixel = 0,
@@ -4006,7 +4006,7 @@ function Library:CreatePreviewPanel(cfg)
     local viewportWrap = New("Frame", {
         Parent = body,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -36),
+        Size = UDim2.fromScale(1, 1),
         Active = true,
     })
 
@@ -4036,13 +4036,12 @@ function Library:CreatePreviewPanel(cfg)
     viewport.LightColor = Color3.fromRGB(255, 255, 255)
     viewport.LightDirection = Vector3.new(-1, -1, -1)
 
-    local overlay = New("Frame", {
-        Name = "EspOverlayHost",
+    local espAnchor = New("Frame", {
+        Name = "EspAnchor",
         Parent = viewport,
         BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromScale(1, 1),
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromOffset(0, 0),
         ZIndex = 10,
         ClipsDescendants = false,
         Visible = true,
@@ -4050,128 +4049,7 @@ function Library:CreatePreviewPanel(cfg)
 
     local previewChar
     local pivotCenterY = 1
-    local zoomValue = 50
-    local autoZoom = true
     local rotation = 0
-
-    local controls = New("Frame", {
-        Parent = body,
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0, 1),
-        Position = UDim2.new(0, 0, 1, 0),
-        Size = UDim2.new(1, 0, 0, 32),
-    })
-
-    local autoBtn = New("TextButton", {
-        Parent = controls,
-        BackgroundColor3 = self.Theme.Accent,
-        AutoButtonColor = false,
-        Size = UDim2.fromOffset(72, 22),
-        Position = UDim2.fromOffset(0, 5),
-        Font = self.FontBold,
-        Text = "auto zoom",
-        TextSize = 11,
-        TextColor3 = self.Theme.DarkBackground,
-    })
-    Corner(4, autoBtn)
-
-    New("TextLabel", {
-        Parent = controls,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(78, 0),
-        Size = UDim2.new(1, -78, 1, 0),
-        Font = self.Font,
-        Text = "zoom",
-        TextSize = 12,
-        TextColor3 = self.Theme.DarkText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-
-    local zoomTrack = New("Frame", {
-        Parent = controls,
-        BackgroundColor3 = self.Theme.Inline,
-        Position = UDim2.new(0, 96, 0.5, -2),
-        Size = UDim2.new(1, -148, 0, 4),
-        BorderSizePixel = 0,
-    })
-    Corner(2, zoomTrack)
-    self:AddToRegistry(Stroke(zoomTrack, self.Theme.Border, 1, 0), "Color", "Border")
-
-    local zoomFill = New("Frame", {
-        Parent = zoomTrack,
-        BackgroundColor3 = self.Theme.Accent,
-        Size = UDim2.fromScale(0.5, 1),
-        BorderSizePixel = 0,
-    })
-    Corner(2, zoomFill)
-
-    local zoomLabel = New("TextLabel", {
-        Parent = controls,
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, 0, 0.5, 0),
-        Size = UDim2.fromOffset(44, 22),
-        Font = self.Font,
-        Text = "1.0x",
-        TextSize = 12,
-        TextColor3 = self.Theme.Text,
-        TextXAlignment = Enum.TextXAlignment.Right,
-    })
-
-    local function setAutoZoom(v)
-        autoZoom = v and true or false
-        autoBtn.BackgroundColor3 = autoZoom and self.Theme.Accent or self.Theme.Inline
-        autoBtn.TextColor3 = autoZoom and self.Theme.DarkBackground or self.Theme.Text
-        autoBtn.Text = autoZoom and "auto zoom" or "manual"
-    end
-
-    local function setZoomValue(v)
-        zoomValue = math.clamp(math.floor(v + 0.5), 5, 100)
-        local alpha = (zoomValue - 5) / 95
-        zoomFill.Size = UDim2.fromScale(alpha, 1)
-        local mul = 0.35 + alpha * 1.65
-        zoomLabel.Text = string.format("%.1fx", mul)
-    end
-
-    local function updateZoomFromInput(inputX)
-        local rel = math.clamp((inputX - zoomTrack.AbsolutePosition.X) / math.max(zoomTrack.AbsoluteSize.X, 1), 0, 1)
-        setZoomValue(5 + rel * 95)
-    end
-
-    local zoomDragging = false
-    Connect(zoomTrack.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            zoomDragging = true
-            autoZoom = false
-            setAutoZoom(false)
-            updateZoomFromInput(input.Position.X)
-        end
-    end)
-    Connect(UserInputService.InputChanged, function(input)
-        if zoomDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-            updateZoomFromInput(input.Position.X)
-        end
-    end)
-    Connect(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            zoomDragging = false
-        end
-    end)
-    Connect(autoBtn.MouseButton1Click, function()
-        setAutoZoom(not autoZoom)
-    end)
-    Connect(viewportWrap.InputChanged, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseWheel then
-            autoZoom = false
-            setAutoZoom(false)
-            setZoomValue(zoomValue - input.Position.Z * 6)
-        end
-    end)
-    setAutoZoom(true)
-    setZoomValue(zoomValue)
 
     local function centerPreviewModel(clone)
         local bbCf, bbSize = clone:GetBoundingBox()
@@ -4183,28 +4061,20 @@ function Library:CreatePreviewPanel(cfg)
 
     local function updatePreviewCamera()
         local focusY = pivotCenterY
-        local distance = 8
+        local distance = 7
         if previewChar then
             local _, size = previewChar:GetBoundingBox()
             local maxDim = math.max(size.X, size.Y, size.Z)
             local viewH = math.max(viewport.AbsoluteSize.Y, 1)
             local viewW = math.max(viewport.AbsoluteSize.X, 1)
             local fovRad = math.rad(previewCam.FieldOfView)
-            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / viewW) * 1.2
-            distance = math.clamp(distance, 4, 16)
+            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / viewW) * 1.35
+            distance = math.clamp(distance, 5, 14)
             focusY = size.Y * 0.5
         end
 
-        local alpha = (zoomValue - 5) / 95
-        local mul = 0.35 + alpha * 1.65
-        if autoZoom then
-            distance = distance / mul
-        else
-            distance = 12 / mul
-        end
-
         previewCam.CFrame = CFrame.new(
-            Vector3.new(0, focusY + 0.15, -distance),
+            Vector3.new(0, focusY + 0.12, -distance),
             Vector3.new(0, focusY, 0)
         )
     end
@@ -4351,8 +4221,8 @@ function Library:CreatePreviewPanel(cfg)
         Panel = panel,
         Viewport = viewport,
         Camera = previewCam,
-        Overlay = overlay,
-        EspAnchor = overlay,
+        EspAnchor = espAnchor,
+        Overlay = espAnchor,
         WorldModel = worldModel,
         LoadModel = loadPreviewModel,
         RebuildCharacter = loadPreviewModel,
@@ -4361,14 +4231,6 @@ function Library:CreatePreviewPanel(cfg)
         end,
         GetPivotCenterY = function()
             return pivotCenterY
-        end,
-        SetAutoZoom = setAutoZoom,
-        SetZoom = setZoomValue,
-        GetAutoZoom = function()
-            return autoZoom
-        end,
-        GetZoom = function()
-            return zoomValue
         end,
     }
 
