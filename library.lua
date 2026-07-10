@@ -4022,7 +4022,14 @@ function Library:CreateEspPreview(cfg)
     self:AddToRegistry(viewport, "BackgroundColor3", "Inline")
     Corner(6, viewport)
 
-    local worldModel = New("WorldModel", { Parent = viewport })
+    local worldModel = viewport
+    local worldOk, worldInst = pcall(function()
+        return New("WorldModel", { Parent = viewport })
+    end)
+    if worldOk and worldInst then
+        worldModel = worldInst
+    end
+
     local previewCam = Instance.new("Camera")
     previewCam.Parent = worldModel
     viewport.CurrentCamera = previewCam
@@ -4303,10 +4310,17 @@ function Library:CreateEspPreview(cfg)
         end
 
         local player = getPlayer()
-        local char = player and player.Character
-        if not char then return end
+        if not player then return end
 
-        local clone = char:Clone()
+        local char = player.Character
+        if not char or not char:IsA("Model") then return end
+
+        local clone
+        local ok = pcall(function()
+            clone = char:Clone()
+        end)
+        if not ok or not clone or not clone:IsA("Model") then return end
+
         for _, inst in ipairs(clone:GetDescendants()) do
             if inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ForceField") then
                 inst:Destroy()
@@ -4318,6 +4332,15 @@ function Library:CreateEspPreview(cfg)
         local animate = clone:FindFirstChild("Animate")
         if animate then animate:Destroy() end
 
+        if not clone.PrimaryPart then
+            local root = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChildWhichIsA("BasePart", true)
+            if not root then
+                clone:Destroy()
+                return
+            end
+            clone.PrimaryPart = root
+        end
+
         clone.Parent = worldModel
         previewChar = clone
     end
@@ -4326,11 +4349,14 @@ function Library:CreateEspPreview(cfg)
         panel.Visible = false
     end)
 
-    Connect(getPlayer().CharacterAdded, function()
-        task.defer(rebuildCharacter)
-    end)
+    local previewPlayer = getPlayer()
+    if previewPlayer then
+        Connect(previewPlayer.CharacterAdded, function()
+            task.defer(rebuildCharacter)
+        end)
+    end
 
-    rebuildCharacter()
+    task.defer(rebuildCharacter)
 
     local preview = {
         Panel = panel,
@@ -4349,8 +4375,11 @@ function Library:CreateEspPreview(cfg)
     Connect(RunService.RenderStepped, function()
         if not panel.Visible then return end
         rotation += 0.6
-        if previewChar and previewChar.PrimaryPart then
-            previewChar:SetPrimaryPartCFrame(CFrame.new(0, 1, 0) * CFrame.Angles(0, math.rad(rotation), 0))
+        if previewChar then
+            local root = previewChar.PrimaryPart or previewChar:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.CFrame = CFrame.new(0, 1, 0) * CFrame.Angles(0, math.rad(rotation), 0)
+            end
         end
         previewCam.CFrame = CFrame.new(Vector3.new(0, 2.1, -6.8), Vector3.new(0, 1.4, 0))
         refreshOverlay()
