@@ -4031,7 +4031,8 @@ function Library:CreatePreviewPanel(cfg)
 
     local previewCam = Instance.new("Camera")
     previewCam.FieldOfView = 50
-    previewCam.Parent = viewport
+    previewCam.CameraType = Enum.CameraType.Fixed
+    previewCam.Parent = workspace
     viewport.CurrentCamera = previewCam
     viewport.Ambient = Color3.fromRGB(180, 180, 190)
     viewport.LightColor = Color3.fromRGB(255, 255, 255)
@@ -4050,10 +4051,12 @@ function Library:CreatePreviewPanel(cfg)
     })
 
     local previewChar
-    local rotation = 0
     local pivotCenterY = 1
     local zoomValue = 50
     local autoZoom = true
+    local modelAngle = CFrame.Angles(0, math.rad(-180), 0)
+    local dragRotate = false
+    local dragMousePos
 
     local controls = New("Frame", {
         Parent = body,
@@ -4067,10 +4070,10 @@ function Library:CreatePreviewPanel(cfg)
         Parent = controls,
         BackgroundColor3 = self.Theme.Accent,
         AutoButtonColor = false,
-        Size = UDim2.fromOffset(52, 22),
+        Size = UDim2.fromOffset(72, 22),
         Position = UDim2.fromOffset(0, 5),
         Font = self.FontBold,
-        Text = "auto",
+        Text = "auto zoom",
         TextSize = 11,
         TextColor3 = self.Theme.DarkBackground,
     })
@@ -4079,8 +4082,8 @@ function Library:CreatePreviewPanel(cfg)
     New("TextLabel", {
         Parent = controls,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(58, 0),
-        Size = UDim2.new(1, -58, 1, 0),
+        Position = UDim2.fromOffset(78, 0),
+        Size = UDim2.new(1, -78, 1, 0),
         Font = self.Font,
         Text = "zoom",
         TextSize = 12,
@@ -4123,6 +4126,7 @@ function Library:CreatePreviewPanel(cfg)
         autoZoom = v and true or false
         autoBtn.BackgroundColor3 = autoZoom and self.Theme.Accent or self.Theme.Inline
         autoBtn.TextColor3 = autoZoom and self.Theme.DarkBackground or self.Theme.Text
+        autoBtn.Text = autoZoom and "auto zoom" or "manual"
     end
 
     local function setZoomValue(v)
@@ -4183,29 +4187,36 @@ function Library:CreatePreviewPanel(cfg)
 
     local function updatePreviewCamera()
         local focusY = pivotCenterY
-        local distance = 6.6
+        local distance = 8
         if previewChar then
             local _, size = previewChar:GetBoundingBox()
             local maxDim = math.max(size.X, size.Y, size.Z)
             local viewH = math.max(viewport.AbsoluteSize.Y, 1)
+            local viewW = math.max(viewport.AbsoluteSize.X, 1)
             local fovRad = math.rad(previewCam.FieldOfView)
-            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / math.max(viewport.AbsoluteSize.X, 1)) * 1.15
-            distance = math.clamp(distance, 3.5, 14)
+            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / viewW) * 1.2
+            distance = math.clamp(distance, 4, 16)
             focusY = size.Y * 0.5
         end
-        if not autoZoom then
-            local alpha = (zoomValue - 5) / 95
-            local mul = 0.35 + alpha * 1.65
-            distance = 12 / mul
-        else
-            local alpha = (zoomValue - 5) / 95
-            local mul = 0.35 + alpha * 1.65
+
+        local alpha = (zoomValue - 5) / 95
+        local mul = 0.35 + alpha * 1.65
+        if autoZoom then
             distance = distance / mul
+        else
+            distance = 12 / mul
         end
+
         previewCam.CFrame = CFrame.new(
             Vector3.new(0, focusY + 0.15, -distance),
             Vector3.new(0, focusY, 0)
         )
+    end
+
+    local function applyPreviewRotation()
+        if previewChar then
+            previewChar:PivotTo(CFrame.new(0, pivotCenterY, 0) * modelAngle)
+        end
     end
 
     local function stripPreviewModel(model)
@@ -4296,6 +4307,8 @@ function Library:CreatePreviewPanel(cfg)
         model.Parent = worldModel
         centerPreviewModel(model)
         previewChar = model
+        modelAngle = CFrame.Angles(0, math.rad(-180), 0)
+        applyPreviewRotation()
 
         if cfg.OnCharacter then
             pcall(cfg.OnCharacter, previewChar)
@@ -4339,12 +4352,28 @@ function Library:CreatePreviewPanel(cfg)
         end
     end
 
+    Connect(viewportWrap.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragRotate = true
+            dragMousePos = input.Position
+        end
+    end)
+    Connect(UserInputService.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragRotate = false
+        end
+    end)
+    Connect(UserInputService.InputChanged, function(input)
+        if dragRotate and input.UserInputType == Enum.UserInputType.MouseMovement and previewChar then
+            local delta = input.Position - dragMousePos
+            dragMousePos = input.Position
+            modelAngle = modelAngle * CFrame.Angles(0, math.rad(delta.X * 0.4), 0)
+            applyPreviewRotation()
+        end
+    end)
+
     Connect(RunService.RenderStepped, function()
         if not panel.Visible then return end
-        rotation += 0.55
-        if previewChar then
-            previewChar:PivotTo(CFrame.new(0, pivotCenterY, 0) * CFrame.Angles(0, math.rad(rotation), 0))
-        end
         updatePreviewCamera()
         if cfg.OnStep then
             pcall(cfg.OnStep)
@@ -4353,6 +4382,7 @@ function Library:CreatePreviewPanel(cfg)
 
     self:OnUnload(function()
         if previewChar then previewChar:Destroy() end
+        if previewCam then previewCam:Destroy() end
         if panel.Parent then panel:Destroy() end
     end)
 
