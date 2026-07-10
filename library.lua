@@ -4029,8 +4029,8 @@ function Library:CreatePreviewPanel(cfg)
         Parent = viewport,
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.52),
-        Size = UDim2.fromOffset(210, 230),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromScale(1, 1),
         ZIndex = 2,
         ClipsDescendants = false,
     })
@@ -4038,23 +4038,32 @@ function Library:CreatePreviewPanel(cfg)
     local previewChar
     local rotation = 0
 
-    local function rebuildCharacter()
-        if previewChar then
-            previewChar:Destroy()
-            previewChar = nil
+    local function preparePreviewClone(char)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local clone
+
+        if hum then
+            pcall(function()
+                char.Archivable = true
+            end)
+            local ok, result = pcall(function()
+                return Players:CreateHumanoidModelFromDescription(hum:GetAppliedDescription(), hum.RigType)
+            end)
+            if ok and result and result:IsA("Model") then
+                clone = result
+            end
         end
 
-        local player = getPlayer()
-        if not player then return end
-
-        local char = player.Character
-        if not char or not char:IsA("Model") then return end
-
-        local clone
-        local ok = pcall(function()
-            clone = char:Clone()
-        end)
-        if not ok or not clone or not clone:IsA("Model") then return end
+        if not clone then
+            local ok
+            ok, clone = pcall(function()
+                char.Archivable = true
+                return char:Clone()
+            end)
+            if not ok or not clone or not clone:IsA("Model") then
+                return nil
+            end
+        end
 
         for _, inst in ipairs(clone:GetDescendants()) do
             if inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ForceField") then
@@ -4064,23 +4073,54 @@ function Library:CreatePreviewPanel(cfg)
                 inst.CanCollide = false
             end
         end
+
         local animate = clone:FindFirstChild("Animate")
-        if animate then animate:Destroy() end
+        if animate then
+            animate:Destroy()
+        end
 
         if not clone.PrimaryPart then
             local root = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChildWhichIsA("BasePart", true)
             if not root then
                 clone:Destroy()
-                return
+                return nil
             end
             clone.PrimaryPart = root
         end
 
-        clone.Parent = worldModel
-        previewChar = clone
+        local cloneHum = clone:FindFirstChildOfClass("Humanoid")
+        if cloneHum then
+            cloneHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        end
 
-        if cfg.OnCharacter then
-            pcall(cfg.OnCharacter, clone)
+        clone:PivotTo(CFrame.new(0, 0, 0))
+        clone.Parent = worldModel
+        return clone
+    end
+
+    local function rebuildCharacter()
+        if previewChar then
+            previewChar:Destroy()
+            previewChar = nil
+        end
+
+        local player = getPlayer()
+        if not player then
+            return
+        end
+
+        local char = player.Character
+        if not char or not char:IsA("Model") then
+            return
+        end
+
+        if not char:FindFirstChild("HumanoidRootPart") then
+            char:WaitForChild("HumanoidRootPart", 3)
+        end
+
+        previewChar = preparePreviewClone(char)
+        if previewChar and cfg.OnCharacter then
+            pcall(cfg.OnCharacter, previewChar)
         end
     end
 
@@ -4098,6 +4138,7 @@ function Library:CreatePreviewPanel(cfg)
     local api = {
         Panel = panel,
         Viewport = viewport,
+        Camera = previewCam,
         Overlay = overlay,
         WorldModel = worldModel,
         RebuildCharacter = rebuildCharacter,
@@ -4133,7 +4174,15 @@ function Library:CreatePreviewPanel(cfg)
         if panel.Parent then panel:Destroy() end
     end)
 
-    task.defer(rebuildCharacter)
+    task.defer(function()
+        for _ = 1, 8 do
+            rebuildCharacter()
+            if previewChar then
+                break
+            end
+            task.wait(0.35)
+        end
+    end)
     api:SetVisible(cfg.Visible ~= false)
     return api
 end
