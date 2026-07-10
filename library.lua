@@ -3950,7 +3950,7 @@ function Library:CreatePreviewPanel(cfg)
     local panel = New("Frame", {
         Name = "PreviewPanel",
         Parent = self.ScreenGui,
-        Size = UDim2.fromOffset(280, 340),
+        Size = UDim2.fromOffset(280, 368),
         Position = cfg.Position or UDim2.fromOffset(740, 80),
         BackgroundColor3 = self.Theme.DarkBackground,
         BorderSizePixel = 0,
@@ -4003,11 +4003,19 @@ function Library:CreatePreviewPanel(cfg)
     })
     Padding(body, 10)
 
-    local viewport = New("ViewportFrame", {
+    local viewportWrap = New("Frame", {
         Parent = body,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, -36),
+        Active = true,
+    })
+
+    local viewport = New("ViewportFrame", {
+        Parent = viewportWrap,
         BackgroundColor3 = self.Theme.Inline,
         Size = UDim2.fromScale(1, 1),
         BorderSizePixel = 0,
+        Active = true,
     })
     self:AddToRegistry(viewport, "BackgroundColor3", "Inline")
     Corner(6, viewport)
@@ -4028,15 +4036,171 @@ function Library:CreatePreviewPanel(cfg)
         Name = "EspOverlayHost",
         Parent = viewport,
         BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
+        AnchorPoint = Vector2.new(0, 0),
+        Position = UDim2.fromOffset(0, 0),
         Size = UDim2.fromScale(1, 1),
-        ZIndex = 2,
+        ZIndex = 10,
         ClipsDescendants = false,
     })
 
     local previewChar
     local rotation = 0
+    local pivotCenterY = 1
+    local zoomValue = 50
+    local autoZoom = true
+
+    local controls = New("Frame", {
+        Parent = body,
+        BackgroundTransparency = 1,
+        AnchorPoint = Vector2.new(0, 1),
+        Position = UDim2.new(0, 0, 1, 0),
+        Size = UDim2.new(1, 0, 0, 32),
+    })
+
+    local autoBtn = New("TextButton", {
+        Parent = controls,
+        BackgroundColor3 = self.Theme.Accent,
+        AutoButtonColor = false,
+        Size = UDim2.fromOffset(52, 22),
+        Position = UDim2.fromOffset(0, 5),
+        Font = self.FontBold,
+        Text = "auto",
+        TextSize = 11,
+        TextColor3 = self.Theme.DarkBackground,
+    })
+    Corner(4, autoBtn)
+
+    New("TextLabel", {
+        Parent = controls,
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(58, 0),
+        Size = UDim2.new(1, -58, 1, 0),
+        Font = self.Font,
+        Text = "zoom",
+        TextSize = 12,
+        TextColor3 = self.Theme.DarkText,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local zoomTrack = New("Frame", {
+        Parent = controls,
+        BackgroundColor3 = self.Theme.Inline,
+        Position = UDim2.new(0, 96, 0.5, -2),
+        Size = UDim2.new(1, -148, 0, 4),
+        BorderSizePixel = 0,
+    })
+    Corner(2, zoomTrack)
+    self:AddToRegistry(Stroke(zoomTrack, self.Theme.Border, 1, 0), "Color", "Border")
+
+    local zoomFill = New("Frame", {
+        Parent = zoomTrack,
+        BackgroundColor3 = self.Theme.Accent,
+        Size = UDim2.fromScale(0.5, 1),
+        BorderSizePixel = 0,
+    })
+    Corner(2, zoomFill)
+
+    local zoomLabel = New("TextLabel", {
+        Parent = controls,
+        BackgroundTransparency = 1,
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0),
+        Size = UDim2.fromOffset(44, 22),
+        Font = self.Font,
+        Text = "1.0x",
+        TextSize = 12,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    })
+
+    local function setAutoZoom(v)
+        autoZoom = v and true or false
+        autoBtn.BackgroundColor3 = autoZoom and self.Theme.Accent or self.Theme.Inline
+        autoBtn.TextColor3 = autoZoom and self.Theme.DarkBackground or self.Theme.Text
+    end
+
+    local function setZoomValue(v)
+        zoomValue = math.clamp(math.floor(v + 0.5), 5, 100)
+        local alpha = (zoomValue - 5) / 95
+        zoomFill.Size = UDim2.fromScale(alpha, 1)
+        local mul = 0.35 + alpha * 1.65
+        zoomLabel.Text = string.format("%.1fx", mul)
+    end
+
+    local function updateZoomFromInput(inputX)
+        local rel = math.clamp((inputX - zoomTrack.AbsolutePosition.X) / math.max(zoomTrack.AbsoluteSize.X, 1), 0, 1)
+        setZoomValue(5 + rel * 95)
+    end
+
+    local zoomDragging = false
+    Connect(zoomTrack.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            zoomDragging = true
+            autoZoom = false
+            setAutoZoom(false)
+            updateZoomFromInput(input.Position.X)
+        end
+    end)
+    Connect(UserInputService.InputChanged, function(input)
+        if zoomDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            updateZoomFromInput(input.Position.X)
+        end
+    end)
+    Connect(UserInputService.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            zoomDragging = false
+        end
+    end)
+    Connect(autoBtn.MouseButton1Click, function()
+        setAutoZoom(not autoZoom)
+    end)
+    Connect(viewportWrap.InputChanged, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseWheel then
+            autoZoom = false
+            setAutoZoom(false)
+            setZoomValue(zoomValue - input.Position.Z * 6)
+        end
+    end)
+    setAutoZoom(true)
+    setZoomValue(zoomValue)
+
+    local function centerPreviewModel(clone)
+        local bbCf, bbSize = clone:GetBoundingBox()
+        clone:PivotTo(CFrame.new(-bbCf.Position.X, -bbCf.Position.Y + bbSize.Y * 0.5, -bbCf.Position.Z))
+        local _, size = clone:GetBoundingBox()
+        pivotCenterY = size.Y * 0.5
+        return pivotCenterY
+    end
+
+    local function updatePreviewCamera()
+        local focusY = pivotCenterY
+        local distance = 6.6
+        if previewChar then
+            local _, size = previewChar:GetBoundingBox()
+            local maxDim = math.max(size.X, size.Y, size.Z)
+            local viewH = math.max(viewport.AbsoluteSize.Y, 1)
+            local fovRad = math.rad(previewCam.FieldOfView)
+            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / math.max(viewport.AbsoluteSize.X, 1)) * 1.15
+            distance = math.clamp(distance, 3.5, 14)
+            focusY = size.Y * 0.5
+        end
+        if not autoZoom then
+            local alpha = (zoomValue - 5) / 95
+            local mul = 0.35 + alpha * 1.65
+            distance = 12 / mul
+        else
+            local alpha = (zoomValue - 5) / 95
+            local mul = 0.35 + alpha * 1.65
+            distance = distance / mul
+        end
+        previewCam.CFrame = CFrame.new(
+            Vector3.new(0, focusY + 0.15, -distance),
+            Vector3.new(0, focusY, 0)
+        )
+    end
 
     local function preparePreviewClone(char)
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -4046,21 +4210,23 @@ function Library:CreatePreviewPanel(cfg)
             pcall(function()
                 char.Archivable = true
             end)
-            local ok, result = pcall(function()
-                return Players:CreateHumanoidModelFromDescription(hum:GetAppliedDescription(), hum.RigType)
-            end)
-            if ok and result and result:IsA("Model") then
-                clone = result
-            end
         end
 
-        if not clone then
-            local ok
-            ok, clone = pcall(function()
-                char.Archivable = true
-                return char:Clone()
-            end)
-            if not ok or not clone or not clone:IsA("Model") then
+        local ok
+        ok, clone = pcall(function()
+            char.Archivable = true
+            return char:Clone()
+        end)
+        if not ok or not clone or not clone:IsA("Model") then
+            if hum then
+                local descOk, result = pcall(function()
+                    return Players:CreateHumanoidModelFromDescription(hum:GetAppliedDescription(), hum.RigType)
+                end)
+                if descOk and result and result:IsA("Model") then
+                    clone = result
+                end
+            end
+            if not clone then
                 return nil
             end
         end
@@ -4093,8 +4259,8 @@ function Library:CreatePreviewPanel(cfg)
             cloneHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
         end
 
-        clone:PivotTo(CFrame.new(0, 0, 0))
         clone.Parent = worldModel
+        centerPreviewModel(clone)
         return clone
     end
 
@@ -4122,6 +4288,7 @@ function Library:CreatePreviewPanel(cfg)
         if previewChar and cfg.OnCharacter then
             pcall(cfg.OnCharacter, previewChar)
         end
+        updatePreviewCamera()
     end
 
     Connect(closeBtn.MouseButton1Click, function()
@@ -4145,6 +4312,17 @@ function Library:CreatePreviewPanel(cfg)
         GetCharacter = function()
             return previewChar
         end,
+        GetPivotCenterY = function()
+            return pivotCenterY
+        end,
+        SetAutoZoom = setAutoZoom,
+        SetZoom = setZoomValue,
+        GetAutoZoom = function()
+            return autoZoom
+        end,
+        GetZoom = function()
+            return zoomValue
+        end,
     }
 
     function api:SetVisible(v)
@@ -4158,12 +4336,9 @@ function Library:CreatePreviewPanel(cfg)
         if not panel.Visible then return end
         rotation += 0.55
         if previewChar then
-            local root = previewChar.PrimaryPart or previewChar:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.CFrame = CFrame.new(0, 1, 0) * CFrame.Angles(0, math.rad(rotation), 0)
-            end
+            previewChar:PivotTo(CFrame.new(0, pivotCenterY, 0) * CFrame.Angles(0, math.rad(rotation), 0))
         end
-        previewCam.CFrame = CFrame.new(Vector3.new(0, 2.05, -6.6), Vector3.new(0, 1.35, 0))
+        updatePreviewCamera()
         if cfg.OnStep then
             pcall(cfg.OnStep)
         end
