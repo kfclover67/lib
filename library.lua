@@ -3935,22 +3935,20 @@ function Library:_BuildSkinChangerPage(page, cfg)
     return SkinPage
 end
 
-local function previewGrad(c1, c2, c3)
-    return ColorSequence.new({
-        ColorSequenceKeypoint.new(0, c1),
-        ColorSequenceKeypoint.new(0.5, c2),
-        ColorSequenceKeypoint.new(1, c3),
-    })
-end
-
-function Library:CreateEspPreview(cfg)
+function Library:CreatePreviewPanel(cfg)
     cfg = cfg or {}
-    local getSettings = cfg.GetSettings or function() return {} end
-    local getPlayer = cfg.GetPlayer or function() return LocalPlayer end
-    local resolveFillImage = cfg.ResolveFillImage
+    if not self.ScreenGui then
+        return {
+            Panel = { Visible = false },
+            Overlay = nil,
+            SetVisible = function() end,
+            RebuildCharacter = function() end,
+        }
+    end
 
+    local getPlayer = cfg.GetPlayer or function() return LocalPlayer end
     local panel = New("Frame", {
-        Name = "EspPreview",
+        Name = "PreviewPanel",
         Parent = self.ScreenGui,
         Size = UDim2.fromOffset(280, 340),
         Position = cfg.Position or UDim2.fromOffset(740, 80),
@@ -3970,14 +3968,6 @@ function Library:CreateEspPreview(cfg)
         BorderSizePixel = 0,
     })
     self:AddToRegistry(titleBar, "BackgroundColor3", "SectionBackground")
-    Corner(8, titleBar)
-    New("Frame", {
-        Parent = titleBar,
-        BackgroundColor3 = self.Theme.SectionBackground,
-        Size = UDim2.new(1, 0, 0, 10),
-        Position = UDim2.new(0, 0, 1, -10),
-        BorderSizePixel = 0,
-    })
 
     New("TextLabel", {
         Parent = titleBar,
@@ -4016,7 +4006,7 @@ function Library:CreateEspPreview(cfg)
     local viewport = New("ViewportFrame", {
         Parent = body,
         BackgroundColor3 = self.Theme.Inline,
-        Size = UDim2.new(1, 0, 1, 0),
+        Size = UDim2.fromScale(1, 1),
         BorderSizePixel = 0,
     })
     self:AddToRegistry(viewport, "BackgroundColor3", "Inline")
@@ -4034,274 +4024,19 @@ function Library:CreateEspPreview(cfg)
     previewCam.Parent = worldModel
     viewport.CurrentCamera = previewCam
 
-    local overlayRoot = New("Frame", {
-        Name = "EspOverlay",
+    local overlay = New("Frame", {
+        Name = "EspOverlayHost",
         Parent = viewport,
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.54),
-        Size = UDim2.fromOffset(132, 188),
+        Position = UDim2.fromScale(0.5, 0.52),
+        Size = UDim2.fromOffset(210, 230),
         ZIndex = 2,
+        ClipsDescendants = false,
     })
-
-    local function makeText(name, anchorY)
-        local label = New("TextLabel", {
-            Name = name,
-            Parent = overlayRoot,
-            BackgroundTransparency = 1,
-            AnchorPoint = Vector2.new(0.5, anchorY or 1),
-            Position = UDim2.new(0.5, 0, anchorY and 0 or 1, anchorY and -4 or 4),
-            Size = UDim2.new(1, 0, 0, 12),
-            Font = self.Font,
-            TextSize = 11,
-            TextColor3 = Color3.new(1, 1, 1),
-            TextStrokeTransparency = 0,
-            TextXAlignment = Enum.TextXAlignment.Center,
-        })
-        local grad = New("UIGradient", {
-            Parent = label,
-            Color = previewGrad(Color3.new(1, 1, 1), Color3.new(1, 1, 1), Color3.new(1, 1, 1)),
-        })
-        local stroke = Stroke(label, Color3.new(0, 0, 0), 1, 0)
-        return label, grad, stroke
-    end
-
-    local nameLabel, nameGrad, nameStroke = makeText("Name", 1)
-    nameLabel.Position = UDim2.new(0.5, 0, 0, -2)
-
-    local boxHolder = New("Frame", {
-        Name = "BoxHolder",
-        Parent = overlayRoot,
-        BackgroundTransparency = 1,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromOffset(98, 156),
-    })
-
-    local boxOuter = New("Frame", {
-        Parent = boxHolder,
-        BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
-        BorderSizePixel = 0,
-    })
-    local boxOuterStroke = Stroke(boxOuter, Color3.new(0, 0, 0), 1, 0)
-
-    local boxInline = New("Frame", {
-        Parent = boxOuter,
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        Position = UDim2.fromOffset(1, 1),
-        Size = UDim2.new(1, -2, 1, -2),
-        BorderSizePixel = 0,
-    })
-    local boxInlineGrad = New("UIGradient", { Parent = boxInline })
-
-    local boxInnerOutline = New("Frame", {
-        Parent = boxInline,
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(1, 1),
-        Size = UDim2.new(1, -2, 1, -2),
-        BorderSizePixel = 0,
-    })
-    Stroke(boxInnerOutline, Color3.new(0, 0, 0), 1, 0)
-
-    local boxFill = New("Frame", {
-        Parent = boxInline,
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        Size = UDim2.fromScale(1, 1),
-        BorderSizePixel = 0,
-        ZIndex = 0,
-    })
-    local boxFillGrad = New("UIGradient", { Parent = boxFill })
-    local boxFillImage = New("ImageLabel", {
-        Parent = boxInline,
-        BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
-        ScaleType = Enum.ScaleType.Stretch,
-        Visible = false,
-        ZIndex = 0,
-    })
-
-    local function makeBar(side)
-        local holder = New("Frame", {
-            Name = side .. "Bar",
-            Parent = overlayRoot,
-            BackgroundColor3 = Color3.new(0, 0, 0),
-            AnchorPoint = Vector2.new(side == "left" and 1 or 0, 0.5),
-            Position = side == "left" and UDim2.new(0, -6, 0.5, 0) or UDim2.new(1, 6, 0.5, 0),
-            Size = UDim2.fromOffset(4, 156),
-            BorderSizePixel = 0,
-        })
-        local fill = New("Frame", {
-            Parent = holder,
-            BackgroundColor3 = Color3.new(1, 1, 1),
-            AnchorPoint = Vector2.new(0, 1),
-            Position = UDim2.new(0, 1, 1, -1),
-            Size = UDim2.new(1, -2, 0.75, 0),
-            BorderSizePixel = 0,
-        })
-        local grad = New("UIGradient", { Parent = fill, Rotation = 90 })
-        return holder, fill, grad
-    end
-
-    local healthHolder, healthFill, healthGrad = makeBar("left")
-    local armorHolder, armorFill, armorGrad = makeBar("right")
-
-    local toolLabel, toolGrad, toolStroke = makeText("Tool", 0)
-    toolLabel.Position = UDim2.new(0.5, 0, 1, 4)
-
-    local distanceLabel, distanceGrad, distanceStroke = makeText("Distance", 0)
-    distanceLabel.Position = UDim2.new(0.5, 0, 1, 16)
-
-    local ammoLabel, ammoGrad, ammoStroke = makeText("Ammo", 0)
-    ammoLabel.Position = UDim2.new(0.5, 0, 1, 28)
-
-    local objects = {
-        Root = overlayRoot,
-        BoxHolder = boxHolder,
-        BoxOuter = boxOuter,
-        BoxOuterStroke = boxOuterStroke,
-        BoxInline = boxInline,
-        BoxInlineGrad = boxInlineGrad,
-        BoxInnerOutline = boxInnerOutline,
-        BoxFill = boxFill,
-        BoxFillGrad = boxFillGrad,
-        BoxFillImage = boxFillImage,
-        HealthHolder = healthHolder,
-        HealthFill = healthFill,
-        HealthGrad = healthGrad,
-        ArmorHolder = armorHolder,
-        ArmorFill = armorFill,
-        ArmorGrad = armorGrad,
-        NameLabel = nameLabel,
-        NameGrad = nameGrad,
-        NameStroke = nameStroke,
-        ToolLabel = toolLabel,
-        ToolGrad = toolGrad,
-        ToolStroke = toolStroke,
-        DistanceLabel = distanceLabel,
-        DistanceGrad = distanceGrad,
-        DistanceStroke = distanceStroke,
-        AmmoLabel = ammoLabel,
-        AmmoGrad = ammoGrad,
-        AmmoStroke = ammoStroke,
-    }
 
     local previewChar
     local rotation = 0
-    local lastFillImage
-
-    local function setBar(holder, fill, grad, enabled, ratio, c1, c2, c3)
-        if not enabled then
-            holder.Visible = false
-            return
-        end
-        holder.Visible = true
-        fill.Visible = ratio > 0
-        fill.Size = UDim2.new(1, -2, math.clamp(ratio, 0, 1), 0)
-        grad.Color = previewGrad(c1, c2, c3)
-    end
-
-    local function setText(label, grad, stroke, enabled, text, c1, c2, c3, outlineCfg)
-        if not enabled or not text or text == "" then
-            label.Visible = false
-            return
-        end
-        label.Visible = true
-        label.Text = text
-        grad.Color = previewGrad(c1, c2, c3)
-        if outlineCfg and outlineCfg.Enabled then
-            stroke.Color = outlineCfg.Color
-            stroke.Enabled = true
-            label.TextStrokeTransparency = 1
-        else
-            stroke.Enabled = false
-            label.TextStrokeTransparency = 0
-        end
-    end
-
-    local function refreshOverlay()
-        local S = getSettings() or {}
-        if not S.Enabled then
-            overlayRoot.Visible = false
-            return
-        end
-
-        overlayRoot.Visible = true
-        local boxes = S.Boxes or {}
-        local outline = S.Outline or {}
-        local fill = boxes.Fill or {}
-
-        if boxes.Enabled then
-            objects.BoxHolder.Visible = true
-            objects.BoxInlineGrad.Color = previewGrad(boxes.Color1 or Color3.new(1, 1, 1), boxes.Color2 or boxes.Color1, boxes.Color3 or boxes.Color2)
-
-            if outline.Enabled then
-                objects.BoxOuterStroke.Enabled = true
-                objects.BoxOuterStroke.Color = outline.Color or Color3.new(0, 0, 0)
-                objects.BoxInnerOutline.Visible = true
-            else
-                objects.BoxOuterStroke.Enabled = false
-                objects.BoxInnerOutline.Visible = false
-            end
-
-            if fill.Enabled then
-                local mode = string.lower(fill.Mode or "gradient")
-                if mode == "image" then
-                    objects.BoxFill.Visible = false
-                    objects.BoxFillImage.Visible = true
-                    local img = resolveFillImage and resolveFillImage() or ""
-                    if img ~= lastFillImage then
-                        objects.BoxFillImage.Image = img or ""
-                        lastFillImage = img
-                    end
-                    objects.BoxFillImage.ImageTransparency = fill.ImageTransparency or 0.35
-                else
-                    objects.BoxFillImage.Visible = false
-                    objects.BoxFill.Visible = true
-                    objects.BoxFillGrad.Color = previewGrad(fill.Color1 or Color3.new(1, 1, 1), fill.Color2 or fill.Color1, fill.Color2)
-                    objects.BoxFillGrad.Transparency = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, fill.Transparency1 or 1),
-                        NumberSequenceKeypoint.new(1, fill.Transparency2 or 0.65),
-                    })
-                end
-            else
-                objects.BoxFill.Visible = false
-                objects.BoxFillImage.Visible = false
-            end
-        else
-            objects.BoxHolder.Visible = false
-        end
-
-        local hpRatio = math.abs(math.sin(os.clock() * 2)) * 0.75 + 0.15
-        local hb = S.HealthBar or {}
-        setBar(objects.HealthHolder, objects.HealthFill, objects.HealthGrad, hb.Enabled, hpRatio, hb.Color1, hb.Color2, hb.Color3)
-
-        local armorRatio = 0.55
-        local ab = S.ArmorBar or {}
-        setBar(objects.ArmorHolder, objects.ArmorFill, objects.ArmorGrad, ab.Enabled, armorRatio, ab.Color1, ab.Color2, ab.Color3)
-
-        local player = getPlayer()
-        local names = S.Names or {}
-        local nameText = "preview"
-        if player then
-            if string.lower(names.Mode or "displayname") == "username" then
-                nameText = player.Name
-            else
-                nameText = player.DisplayName ~= "" and player.DisplayName or player.Name
-            end
-        end
-        setText(objects.NameLabel, objects.NameGrad, objects.NameStroke, names.Enabled, nameText, names.Color1, names.Color2, names.Color3, names.Outline)
-
-        local tool = S.Tool or {}
-        setText(objects.ToolLabel, objects.ToolGrad, objects.ToolStroke, tool.Enabled, "[ Tool ]", tool.Color1, tool.Color2, tool.Color3, tool.Outline)
-
-        local dist = S.Distance or {}
-        local distText = (dist.Format or "{distance}m"):gsub("{distance}", "127")
-        setText(objects.DistanceLabel, objects.DistanceGrad, objects.DistanceStroke, dist.Enabled, distText, dist.Color1, dist.Color2, dist.Color3, dist.Outline)
-
-        local ammo = S.Ammo or {}
-        setText(objects.AmmoLabel, objects.AmmoGrad, objects.AmmoStroke, ammo.Enabled, "30 | 90", ammo.Color1, ammo.Color2, ammo.Color3, ammo.Outline)
-    end
 
     local function rebuildCharacter()
         if previewChar then
@@ -4343,6 +4078,10 @@ function Library:CreateEspPreview(cfg)
 
         clone.Parent = worldModel
         previewChar = clone
+
+        if cfg.OnCharacter then
+            pcall(cfg.OnCharacter, clone)
+        end
     end
 
     Connect(closeBtn.MouseButton1Click, function()
@@ -4356,33 +4095,37 @@ function Library:CreateEspPreview(cfg)
         end)
     end
 
-    task.defer(rebuildCharacter)
-
-    local preview = {
+    local api = {
         Panel = panel,
         Viewport = viewport,
-        Refresh = refreshOverlay,
+        Overlay = overlay,
+        WorldModel = worldModel,
+        RebuildCharacter = rebuildCharacter,
+        GetCharacter = function()
+            return previewChar
+        end,
     }
 
-    function preview:SetVisible(v)
+    function api:SetVisible(v)
         panel.Visible = v and true or false
         if v then
             rebuildCharacter()
-            refreshOverlay()
         end
     end
 
     Connect(RunService.RenderStepped, function()
         if not panel.Visible then return end
-        rotation += 0.6
+        rotation += 0.55
         if previewChar then
             local root = previewChar.PrimaryPart or previewChar:FindFirstChild("HumanoidRootPart")
             if root then
                 root.CFrame = CFrame.new(0, 1, 0) * CFrame.Angles(0, math.rad(rotation), 0)
             end
         end
-        previewCam.CFrame = CFrame.new(Vector3.new(0, 2.1, -6.8), Vector3.new(0, 1.4, 0))
-        refreshOverlay()
+        previewCam.CFrame = CFrame.new(Vector3.new(0, 2.05, -6.6), Vector3.new(0, 1.35, 0))
+        if cfg.OnStep then
+            pcall(cfg.OnStep)
+        end
     end)
 
     self:OnUnload(function()
@@ -4390,8 +4133,9 @@ function Library:CreateEspPreview(cfg)
         if panel.Parent then panel:Destroy() end
     end)
 
-    preview:SetVisible(cfg.Visible ~= false)
-    return preview
+    task.defer(rebuildCharacter)
+    api:SetVisible(cfg.Visible ~= false)
+    return api
 end
 
 function Library:OnUnload(fn)
