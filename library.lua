@@ -3954,7 +3954,7 @@ function Library:CreatePreviewPanel(cfg)
         Position = cfg.Position or UDim2.fromOffset(740, 80),
         BackgroundColor3 = self.Theme.DarkBackground,
         BorderSizePixel = 0,
-        ClipsDescendants = true,
+        ClipsDescendants = false,
         ZIndex = 25,
     })
     self:AddToRegistry(panel, "BackgroundColor3", "DarkBackground")
@@ -4016,8 +4016,10 @@ function Library:CreatePreviewPanel(cfg)
         Name = "EspPreviewHost",
         Parent = previewArea,
         BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
-        ZIndex = 2,
+        AnchorPoint = Vector2.new(0, 0),
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, 0, 1, 0),
+        ZIndex = 5,
         ClipsDescendants = false,
         Visible = true,
     })
