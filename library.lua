@@ -4003,215 +4003,24 @@ function Library:CreatePreviewPanel(cfg)
     })
     Padding(body, 10)
 
-    local viewportWrap = New("Frame", {
+    local previewArea = New("Frame", {
         Parent = body,
-        BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
-        Active = true,
-    })
-
-    local viewport = New("ViewportFrame", {
-        Parent = viewportWrap,
         BackgroundColor3 = self.Theme.Inline,
         Size = UDim2.fromScale(1, 1),
         BorderSizePixel = 0,
-        Active = true,
     })
-    self:AddToRegistry(viewport, "BackgroundColor3", "Inline")
-    Corner(6, viewport)
+    self:AddToRegistry(previewArea, "BackgroundColor3", "Inline")
+    Corner(6, previewArea)
 
-    local worldModel = viewport
-    local worldOk, worldInst = pcall(function()
-        return New("WorldModel", { Parent = viewport })
-    end)
-    if worldOk and worldInst then
-        worldModel = worldInst
-    end
-
-    local previewCam = Instance.new("Camera")
-    previewCam.FieldOfView = 50
-    previewCam.Parent = worldModel
-    viewport.CurrentCamera = previewCam
-    viewport.Ambient = Color3.fromRGB(180, 180, 190)
-    viewport.LightColor = Color3.fromRGB(255, 255, 255)
-    viewport.LightDirection = Vector3.new(-1, -1, -1)
-
-    local espAnchor = New("Frame", {
-        Name = "EspAnchor",
-        Parent = viewport,
+    local espHost = New("Frame", {
+        Name = "EspPreviewHost",
+        Parent = previewArea,
         BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.fromOffset(0, 0),
-        ZIndex = 10,
+        Size = UDim2.fromScale(1, 1),
+        ZIndex = 2,
         ClipsDescendants = false,
         Visible = true,
     })
-
-    local previewChar
-    local pivotCenterY = 1
-    local rotation = 0
-
-    local function centerPreviewModel(clone)
-        local bbCf, bbSize = clone:GetBoundingBox()
-        clone:PivotTo(CFrame.new(-bbCf.Position.X, -bbCf.Position.Y + bbSize.Y * 0.5, -bbCf.Position.Z))
-        local _, size = clone:GetBoundingBox()
-        pivotCenterY = size.Y * 0.5
-        return pivotCenterY
-    end
-
-    local function updatePreviewCamera()
-        local focusY = pivotCenterY
-        local distance = 7
-        if previewChar then
-            local _, size = previewChar:GetBoundingBox()
-            local maxDim = math.max(size.X, size.Y, size.Z)
-            local viewH = math.max(viewport.AbsoluteSize.Y, 1)
-            local viewW = math.max(viewport.AbsoluteSize.X, 1)
-            local fovRad = math.rad(previewCam.FieldOfView)
-            distance = (maxDim * 0.5) / math.tan(fovRad * 0.5) * (viewH / viewW) * 1.35
-            distance = math.clamp(distance, 5, 14)
-            focusY = size.Y * 0.5
-        end
-
-        previewCam.CFrame = CFrame.new(
-            Vector3.new(0, focusY + 0.12, -distance),
-            Vector3.new(0, focusY, 0)
-        )
-    end
-
-    local function applyPreviewRotation()
-        if previewChar then
-            previewChar:PivotTo(CFrame.new(0, pivotCenterY, 0) * CFrame.Angles(0, math.rad(rotation), 0))
-        end
-    end
-
-    local function buildPlainR6()
-        local model = Instance.new("Model")
-        model.Name = "EspPreviewCharacter"
-
-        local function mkPart(name, size, pos)
-            local p = Instance.new("Part")
-            p.Name = name
-            p.Size = size
-            p.Anchored = true
-            p.CanCollide = false
-            p.Color = Color3.fromRGB(163, 162, 165)
-            p.CFrame = CFrame.new(pos)
-            p.Parent = model
-            return p
-        end
-
-        local hrp = mkPart("HumanoidRootPart", Vector3.new(2, 2, 1), Vector3.new(0, 3, 0))
-        hrp.Transparency = 1
-        mkPart("Torso", Vector3.new(2, 2, 1), Vector3.new(0, 3, 0))
-        mkPart("Head", Vector3.new(2, 1, 1), Vector3.new(0, 4.5, 0))
-        mkPart("Left Arm", Vector3.new(1, 2, 1), Vector3.new(-1.5, 3, 0))
-        mkPart("Right Arm", Vector3.new(1, 2, 1), Vector3.new(1.5, 3, 0))
-        mkPart("Left Leg", Vector3.new(1, 2, 1), Vector3.new(-0.5, 1, 0))
-        mkPart("Right Leg", Vector3.new(1, 2, 1), Vector3.new(0.5, 1, 0))
-
-        local hum = Instance.new("Humanoid")
-        hum.RigType = Enum.HumanoidRigType.R6
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-        hum.Parent = model
-
-        model.PrimaryPart = hrp
-        return model
-    end
-
-    local function stripPreviewModel(model)
-        for _, inst in ipairs(model:GetDescendants()) do
-            if inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ForceField") then
-                inst:Destroy()
-            elseif inst:IsA("BasePart") then
-                inst.Anchored = true
-                inst.CanCollide = false
-            end
-        end
-
-        local animate = model:FindFirstChild("Animate")
-        if animate then
-            animate:Destroy()
-        end
-
-        if not model.PrimaryPart then
-            local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart", true)
-            if root then
-                model.PrimaryPart = root
-            end
-        end
-
-        local hum = model:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-        end
-    end
-
-    local function loadPreviewModel()
-        if previewChar then
-            previewChar:Destroy()
-            previewChar = nil
-        end
-
-        local getPlayer = cfg.GetPlayer or function()
-            return LocalPlayer
-        end
-        local player = getPlayer()
-        local char = player and player.Character
-        local model
-
-        if char then
-            local ok, clone = pcall(function()
-                char.Archivable = true
-                return char:Clone()
-            end)
-            if ok and clone and clone:IsA("Model") then
-                model = clone
-            end
-        end
-
-        if not model then
-            local ok, built = pcall(function()
-                return Players:CreateHumanoidModelFromDescription(
-                    Instance.new("HumanoidDescription"),
-                    Enum.HumanoidRigType.R6
-                )
-            end)
-            if ok and built and built:IsA("Model") then
-                model = built
-            end
-        end
-
-        if not model then
-            model = buildPlainR6()
-        end
-
-        if not model or not model:IsA("Model") then
-            return
-        end
-
-        stripPreviewModel(model)
-        if not model.PrimaryPart then
-            local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart", true)
-            if root then
-                model.PrimaryPart = root
-            else
-                model:Destroy()
-                return
-            end
-        end
-
-        model.Parent = worldModel
-        centerPreviewModel(model)
-        previewChar = model
-        rotation = -180
-        applyPreviewRotation()
-
-        if cfg.OnCharacter then
-            pcall(cfg.OnCharacter, previewChar)
-        end
-        updatePreviewCamera()
-    end
 
     Connect(closeBtn.MouseButton1Click, function()
         panel.Visible = false
@@ -4219,53 +4028,34 @@ function Library:CreatePreviewPanel(cfg)
 
     local api = {
         Panel = panel,
-        Viewport = viewport,
-        Camera = previewCam,
-        EspAnchor = espAnchor,
-        Overlay = espAnchor,
-        WorldModel = worldModel,
-        LoadModel = loadPreviewModel,
-        RebuildCharacter = loadPreviewModel,
+        PreviewHost = espHost,
+        EspAnchor = espHost,
+        Overlay = espHost,
+        RebuildCharacter = function() end,
         GetCharacter = function()
-            return previewChar
-        end,
-        GetPivotCenterY = function()
-            return pivotCenterY
+            return nil
         end,
     }
 
     function api:SetVisible(v)
         panel.Visible = v and true or false
-        if v then
-            loadPreviewModel()
-        end
     end
 
     Connect(RunService.RenderStepped, function()
-        if not panel.Visible then return end
-        rotation += 0.55
-        applyPreviewRotation()
-        updatePreviewCamera()
+        if not panel.Visible then
+            return
+        end
         if cfg.OnStep then
             pcall(cfg.OnStep)
         end
     end)
 
     self:OnUnload(function()
-        if previewChar then previewChar:Destroy() end
-        if previewCam then previewCam:Destroy() end
-        if panel.Parent then panel:Destroy() end
-    end)
-
-    task.defer(function()
-        for _ = 1, 8 do
-            loadPreviewModel()
-            if previewChar then
-                break
-            end
-            task.wait(0.35)
+        if panel.Parent then
+            panel:Destroy()
         end
     end)
+
     api:SetVisible(cfg.Visible ~= false)
     return api
 end
