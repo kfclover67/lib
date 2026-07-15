@@ -1626,8 +1626,6 @@ function Library:CreateWindow(cfg)
         function Tab:AddSkinChangerPage(cfg)
             left.Visible = false
             right.Visible = false
-            -- Parent under ContentArea so panels sit below the tab search header
-            -- (root-on-page was covering the search bar).
             return Library:_BuildSkinChangerPage(contentArea, cfg or {})
         end
 
@@ -2998,7 +2996,7 @@ end
 
 function Library:CopyJoinScript()
     local script = string.format(
-        "game:GetService(\"TeleportService\"):TeleportToPlaceInstance(%d, \"%s\")",
+        "game:GetService(\"TeleportService\"):TeleportToPlaceInstance(%d, \"%s\", game.Players.LocalPlayer)",
         game.PlaceId, game.JobId)
     if setClipboard then setClipboard(script); self:Notify("copied join script") else self:Notify("clipboard not supported") end
 end
