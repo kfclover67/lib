@@ -757,15 +757,7 @@ function Library:_CreateTabSearchHeader(page, Tab)
         Parent = page,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, HEADER_H),
-        ZIndex = 2,
-    })
-
-    New("UIListLayout", {
-        Parent = header,
-        FillDirection = Enum.FillDirection.Horizontal,
-        VerticalAlignment = Enum.VerticalAlignment.Center,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 12),
+        ZIndex = 10,
     })
 
     local tabInfo = New("Frame", {
@@ -774,7 +766,6 @@ function Library:_CreateTabSearchHeader(page, Tab)
         BackgroundTransparency = 1,
         AutomaticSize = Enum.AutomaticSize.X,
         Size = UDim2.fromOffset(0, HEADER_H),
-        LayoutOrder = 1,
     })
     New("UIListLayout", {
         Parent = tabInfo,
@@ -826,13 +817,23 @@ function Library:_CreateTabSearchHeader(page, Tab)
         Parent = header,
         BackgroundColor3 = self.Theme.Inline,
         Size = UDim2.new(1, 0, 0, SEARCH_H),
-        LayoutOrder = 2,
+        Position = UDim2.fromOffset(0, math.floor((HEADER_H - SEARCH_H) / 2)),
         BorderSizePixel = 0,
         ClipsDescendants = true,
+        ZIndex = 11,
     })
     self:AddToRegistry(searchWrap, "BackgroundColor3", "Inline")
     self:AddToRegistry(Stroke(searchWrap, self.Theme.Border, 1, 0), "Color", "Border")
     Corner(1, searchWrap)
+
+    local function layoutSearchBar()
+        local tabW = tabInfo.AbsoluteSize.X
+        local gap = 12
+        searchWrap.Position = UDim2.fromOffset(tabW + gap, math.floor((HEADER_H - SEARCH_H) / 2))
+        searchWrap.Size = UDim2.new(1, -(tabW + gap), 0, SEARCH_H)
+    end
+    Connect(tabInfo:GetPropertyChangedSignal("AbsoluteSize"), layoutSearchBar)
+    task.defer(layoutSearchBar)
 
     New("ImageLabel", {
         Name = "SearchIcon",
@@ -1625,7 +1626,9 @@ function Library:CreateWindow(cfg)
         function Tab:AddSkinChangerPage(cfg)
             left.Visible = false
             right.Visible = false
-            return Library:_BuildSkinChangerPage(page, cfg or {})
+            -- Parent under ContentArea so panels sit below the tab search header
+            -- (root-on-page was covering the search bar).
+            return Library:_BuildSkinChangerPage(contentArea, cfg or {})
         end
 
         table.insert(Window.Tabs, Tab)
