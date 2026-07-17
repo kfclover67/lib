@@ -1186,6 +1186,7 @@ function Library:CreateWindow(cfg)
     Corner(6, main)
     Stroke(main, Color3.fromRGB(0, 0, 0), 1, 0.3)
     Library.MainFrame = main
+    local mainRadius = 10
 
     local bgImage = New("ImageLabel", {
         Name = "VoidBackgroundImage",
@@ -1234,19 +1235,21 @@ function Library:CreateWindow(cfg)
     local sidebar = New("Frame", {
         Name = "Sidebar",
         Parent = main,
-        Size = UDim2.new(0, sidebarW, 1, 0),
+        Size = UDim2.new(0, sidebarW + mainRadius, 1, 0),
         BackgroundColor3 = Library.Theme.DarkBackground,
         BorderSizePixel = 0,
+        ZIndex = 3,
     })
     Library:AddToRegistry(sidebar, "BackgroundColor3", "DarkBackground")
+    Corner(6, sidebar)
     Library.SidebarFrame = sidebar
 
     Library:AddToRegistry(New("Frame", {
         Parent = sidebar,
-        AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, 0, 0, 0),
+        Position = UDim2.fromOffset(sidebarW - 1, 0),
         Size = UDim2.new(0, 1, 1, 0),
         BorderSizePixel = 0,
+        ZIndex = 4,
     }), "BackgroundColor3", "Border")
 
     local titleHolder = New("Frame", {
@@ -1254,8 +1257,8 @@ function Library:CreateWindow(cfg)
         Parent = sidebar,
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 20),
-        Size = UDim2.new(1, -16, 0, 32),
+        Position = UDim2.fromOffset(math.floor(sidebarW / 2), 20),
+        Size = UDim2.fromOffset(sidebarW - 16, 32),
     })
     local titleParent = titleHolder
     if titleIcon then
@@ -1311,7 +1314,7 @@ function Library:CreateWindow(cfg)
         Parent = sidebar,
         BackgroundTransparency = 1,
         Position = UDim2.fromOffset(8, 72),
-        Size = UDim2.new(1, -16, 1, -84),
+        Size = UDim2.new(0, sidebarW - 16, 1, -84),
     })
     New("UIListLayout", {
         Parent = tabHolder,
@@ -1327,13 +1330,14 @@ function Library:CreateWindow(cfg)
         Size = UDim2.new(1, -sidebarW, 1, 0),
         BackgroundColor3 = Library.Theme.PageBackground,
         BorderSizePixel = 0,
+        ZIndex = 2,
     })
     Library:AddToRegistry(content, "BackgroundColor3", "PageBackground")
+    Corner(6, content)
     Library.ContentFrame = content
-    content.ZIndex = 2
-    sidebar.ZIndex = 2
-    titleHolder.ZIndex = 3
-    tabHolder.ZIndex = 3
+    sidebar.ZIndex = 3
+    titleHolder.ZIndex = 4
+    tabHolder.ZIndex = 4
 
     do
         local dragging, dragStart, startPos
@@ -1342,8 +1346,9 @@ function Library:CreateWindow(cfg)
             BackgroundTransparency = 1,
             Text = "",
             Position = UDim2.fromOffset(0, 0),
-            Size = UDim2.new(1, 0, 0, 64),
+            Size = UDim2.fromOffset(sidebarW, 64),
             AutoButtonColor = false,
+            ZIndex = 5,
         })
         Connect(dragZone.InputBegan, function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
