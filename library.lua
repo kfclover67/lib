@@ -1234,6 +1234,11 @@ function Library:CreateWindow(cfg)
     local uiScale = New("UIScale", { Parent = main, Scale = 1 })
     if mobile then uiScale.Scale = cfg.MobileScale or 0.6 end
     Library.UIScale = uiScale
+    Library._uiScaleValue = uiScale.Scale
+    Library._windowMinSize = Vector2.new(
+        math.max(420, (cfg.MinSize and cfg.MinSize.X) or 480),
+        math.max(280, (cfg.MinSize and cfg.MinSize.Y) or 360)
+    )
 
     local sidebar = New("Frame", {
         Name = "Sidebar",
@@ -1810,6 +1815,72 @@ function Library:CreateWindow(cfg)
         end
     end
 
+    do
+        local grip = New("ImageButton", {
+            Name = "ResizeGrip",
+            Parent = main,
+            AnchorPoint = Vector2.new(1, 1),
+            Position = UDim2.new(1, -3, 1, -3),
+            Size = UDim2.fromOffset(16, 16),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            Image = "rbxassetid://72764732196403",
+            ImageColor3 = Library.Theme.DarkText,
+            ZIndex = 80,
+        })
+        Library:AddToRegistry(grip, "ImageColor3", "DarkText")
+        Library.ResizeGrip = grip
+
+        local resizing = false
+        local startMouse, startSize, startTopLeft
+        Connect(grip.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                resizing = true
+                startMouse = input.Position
+                startSize = main.AbsoluteSize
+                startTopLeft = main.AbsolutePosition
+                Library:CloseAllPopups()
+            end
+        end)
+        Connect(UserInputService.InputChanged, function(input)
+            if not resizing then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            local scale = (Library.UIScale and Library.UIScale.Scale) or 1
+            if scale <= 0 then scale = 1 end
+            local delta = input.Position - startMouse
+            local cam = workspace.CurrentCamera
+            local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+            local minS = Library._windowMinSize or Vector2.new(480, 360)
+            local newAbsW = math.clamp(startSize.X + delta.X, minS.X * scale, vp.X - 20)
+            local newAbsH = math.clamp(startSize.Y + delta.Y, minS.Y * scale, vp.Y - 20)
+            main.Size = UDim2.fromOffset(newAbsW / scale, newAbsH / scale)
+            local ap = main.AnchorPoint
+            main.Position = UDim2.fromOffset(
+                startTopLeft.X + newAbsW * ap.X,
+                startTopLeft.Y + newAbsH * ap.Y
+            )
+        end)
+        Connect(UserInputService.InputEnded, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                resizing = false
+            end
+        end)
+        Connect(grip.MouseEnter, function()
+            grip.ImageColor3 = Library.Theme.Accent
+        end)
+        Connect(grip.MouseLeave, function()
+            if not resizing then
+                grip.ImageColor3 = Library.Theme.DarkText
+            end
+        end)
+    end
+
     Library.Window = Window
     Library.Open = true
     Library:_InitGlobals(main, mobile)
@@ -1819,6 +1890,20 @@ function Library:CreateWindow(cfg)
     end)
 
     return Window
+end
+
+function Library:SetUIScale(scale)
+    scale = math.clamp(tonumber(scale) or 1, 0.5, 1.3)
+    self._uiScaleValue = scale
+    if self.UIScale then
+        self.UIScale.Scale = scale
+    end
+    if self.WatermarkScale then
+        self.WatermarkScale.Scale = scale
+    end
+    if self.KeybindScale then
+        self.KeybindScale.Scale = scale
+    end
 end
 
 function Library:_InitGlobals(main, mobile)
@@ -1971,6 +2056,10 @@ function Library:CreateWatermark(text)
     })
     self:AddToRegistry(lbl, "TextColor3", "LightText")
     New("UIPadding", { Parent = wm, PaddingRight = UDim.new(0, 12) })
+    self.WatermarkScale = New("UIScale", {
+        Parent = wm,
+        Scale = self._uiScaleValue or (self.UIScale and self.UIScale.Scale) or 1,
+    })
     makeDraggable(wm)
     self.Watermark = wm
     self.WatermarkLabel = lbl
@@ -3123,6 +3212,10 @@ function Library:CreateKeybindList()
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 141,
     })
     self:AddToRegistry(title, "TextColor3", "Accent")
+    self.KeybindScale = New("UIScale", {
+        Parent = frame,
+        Scale = self._uiScaleValue or (self.UIScale and self.UIScale.Scale) or 1,
+    })
     makeDraggable(frame)
     self.KeybindFrame = frame
     self.KeybindListContent = frame
@@ -3687,7 +3780,7 @@ function Library:BuildSettingsTab(tab)
         Callback = function(v) self.KeybindListMode = v; self:_UpdateKeybindList() end,
     })
     uiBox:AddSlider("ui_scale", { Text = "ui scale", Min = 50, Max = 130, Default = self.IsMobile and 60 or 100, Suffix = "%", Callback = function(v)
-        if self.UIScale then self.UIScale.Scale = v / 100 end
+        self:SetUIScale(v / 100)
     end })
     self._ignoreConfig = true
     uiBox:AddButton({ Text = "unload", Func = function() self:Unload() end })
