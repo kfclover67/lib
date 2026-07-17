@@ -1172,7 +1172,7 @@ function Library:CreateWindow(cfg)
     Library.ScreenGui = gui
 
     local centered = mobile or cfg.Center ~= false
-    local mainProps = {
+    local main = New("Frame", {
         Name = "Main",
         Parent = gui,
         Size = baseSize,
@@ -1180,17 +1180,8 @@ function Library:CreateWindow(cfg)
         Position = centered and UDim2.fromScale(0.5, 0.5) or UDim2.fromOffset(60, 60),
         BackgroundColor3 = Library.Theme.DarkBackground,
         BorderSizePixel = 0,
-    }
-    local main
-    local okCanvas, canvasInst = pcall(function()
-        return New("CanvasGroup", mainProps)
-    end)
-    if okCanvas and canvasInst then
-        main = canvasInst
-    else
-        mainProps.ClipsDescendants = true
-        main = New("Frame", mainProps)
-    end
+        ClipsDescendants = true,
+    })
     Library:AddToRegistry(main, "BackgroundColor3", "DarkBackground")
     Corner(6, main)
     Stroke(main, Color3.fromRGB(0, 0, 0), 1, 0.3)
@@ -1856,13 +1847,15 @@ function Library:CreateWindow(cfg)
             local cam = workspace.CurrentCamera
             local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
             local minS = Library._windowMinSize or Vector2.new(480, 360)
-            local newAbsW = math.clamp(startSize.X + delta.X, minS.X * scale, vp.X - 20)
-            local newAbsH = math.clamp(startSize.Y + delta.Y, minS.Y * scale, vp.Y - 20)
-            main.Size = UDim2.fromOffset(newAbsW / scale, newAbsH / scale)
+            local newAbsW = math.floor(math.clamp(startSize.X + delta.X, minS.X * scale, vp.X - 20) + 0.5)
+            local newAbsH = math.floor(math.clamp(startSize.Y + delta.Y, minS.Y * scale, vp.Y - 20) + 0.5)
+            local logicalW = math.max(1, math.floor(newAbsW / scale + 0.5))
+            local logicalH = math.max(1, math.floor(newAbsH / scale + 0.5))
+            main.Size = UDim2.fromOffset(logicalW, logicalH)
             local ap = main.AnchorPoint
             main.Position = UDim2.fromOffset(
-                startTopLeft.X + newAbsW * ap.X,
-                startTopLeft.Y + newAbsH * ap.Y
+                math.floor(startTopLeft.X + newAbsW * ap.X + 0.5),
+                math.floor(startTopLeft.Y + newAbsH * ap.Y + 0.5)
             )
         end)
         Connect(UserInputService.InputEnded, function(input)
