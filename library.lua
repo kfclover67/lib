@@ -3480,9 +3480,70 @@ function Library:_BuildSkinChangerPage(page, cfg)
     generalListHolder.AutomaticSize = Enum.AutomaticSize.None
 
     local skinListHolder, skinSearch, skinSearchBtn, skinClearBtn, skinList =
-        makeSearchList(modContent, "skin select", 0, 9999)
+        makeSearchList(modContent, cfg.CosmeticListLabel or "skin select", 0, 9999)
     skinListHolder.Size = UDim2.new(1, 0, 1, 0)
     skinListHolder.Position = UDim2.fromOffset(0, 0)
+
+    local categories = cfg.Categories
+    local selectedCategory = cfg.DefaultCategory
+    local categoryButtons = {}
+    if type(categories) == "table" and #categories > 0 then
+        selectedCategory = selectedCategory or categories[1]
+        local catRow = New("Frame", {
+            Parent = skinListHolder,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(0, 46),
+            Size = UDim2.new(1, 0, 0, 26),
+            ZIndex = 3,
+        })
+        New("UIListLayout", {
+            Parent = catRow,
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 4),
+        })
+        local function refreshCategoryButtons()
+            for name, btn in pairs(categoryButtons) do
+                local active = name == selectedCategory
+                btn.BackgroundColor3 = active and self.Theme.Accent or self.Theme.Inline
+                btn.TextColor3 = active and Color3.new(1, 1, 1) or self.Theme.Text
+            end
+        end
+        for i, name in ipairs(categories) do
+            local btn = New("TextButton", {
+                Parent = catRow,
+                BackgroundColor3 = self.Theme.Inline,
+                AutoButtonColor = false,
+                Size = UDim2.new(1 / #categories, -4, 1, 0),
+                Font = self.Font,
+                Text = string.lower(tostring(name)),
+                TextSize = 11,
+                TextColor3 = self.Theme.Text,
+                LayoutOrder = i,
+                ZIndex = 4,
+            })
+            Corner(4, btn)
+            self:AddToRegistry(btn, "BackgroundColor3", "Inline")
+            categoryButtons[name] = btn
+            Connect(btn.MouseButton1Click, function()
+                if selectedCategory == name then
+                    return
+                end
+                selectedCategory = name
+                refreshCategoryButtons()
+                if cfg.OnCategoryChanged then
+                    cfg.OnCategoryChanged(name)
+                elseif cfg._refreshSkins then
+                    cfg._refreshSkins()
+                end
+            end)
+        end
+        refreshCategoryButtons()
+        skinList.Position = UDim2.fromOffset(0, 76)
+        skinList.Size = UDim2.new(1, 0, 1, -76)
+    end
 
     local viewportHolder, viewport, worldModel, previewControls =
         makePreviewBlock(previewContent, cfg.DefaultAutoRotate)
@@ -3823,6 +3884,22 @@ function Library:_BuildSkinChangerPage(page, cfg)
             btn.TextColor3 = Library.Theme.Accent
             if cfg.OnSkinSelected then cfg.OnSkinSelected(name) end
         end)
+    end
+
+    function SkinPage:GetCategory()
+        return selectedCategory
+    end
+
+    function SkinPage:SetCategory(name)
+        if not name or not categoryButtons[name] then
+            return
+        end
+        selectedCategory = name
+        for catName, btn in pairs(categoryButtons) do
+            local active = catName == selectedCategory
+            btn.BackgroundColor3 = active and Library.Theme.Accent or Library.Theme.Inline
+            btn.TextColor3 = active and Color3.new(1, 1, 1) or Library.Theme.Text
+        end
     end
 
     function SkinPage:SetPreviewModel(model)
