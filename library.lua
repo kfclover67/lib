@@ -79,6 +79,7 @@ local Library = {
     CustomFontAssets = {},
     DependencyBoxes = {},
     KeybindEntries = {},
+    Tabboxes = {},
     SearchIndex = {},
     SearchIconAsset = "rbxassetid://72296609649861",
     ActiveSearchPanels = {},
@@ -366,27 +367,60 @@ function Library:SetTheme(themeKey, color)
         pcall(function() self.SyncTheme[themeKey]:SetValue(color, nil, true) end)
         self._themeSync = false
     end
+    self:_SyncDynamicTheme(true)
     if not self._colorPickerDragging then
-        self:_RefreshThemeDynamic(themeKey)
-    elseif themeKey == "Accent" then
-        for _, t in pairs(self.Toggles) do
-            if t._boxStroke then
-                t._boxStroke.Color = t.Value and self.Theme.Accent or self.Theme.Border
-            end
+        if themeKey == "Accent" then
+            self:_UpdateKeybindList()
         end
     end
     self:_ApplyBackgroundLayers()
 end
 
-function Library:_RefreshThemeDynamic(themeKey)
-    if self._currentTabRefresh then
-        pcall(self._currentTabRefresh)
-    end
+function Library:_SyncDynamicTheme(full)
     for _, t in pairs(self.Toggles) do
-        if t._boxStroke then
+        if t._boxStroke and t._boxStroke.Parent then
             t._boxStroke.Color = t.Value and self.Theme.Accent or self.Theme.Border
         end
+        if t._fill and t._fill.Parent then
+            t._fill.BackgroundTransparency = t.Value and 0 or 1
+            t._fill.BackgroundColor3 = self.Theme.Accent
+        end
     end
+    if full and self._currentTabRefresh then
+        pcall(self._currentTabRefresh)
+    end
+    for _, tabbox in ipairs(self.Tabboxes or {}) do
+        local cur = tabbox._current
+        for _, t in ipairs(tabbox.Tabs or {}) do
+            local active = t == cur
+            if t._stroke and t._stroke.Parent then
+                t._stroke.Color = active and self.Theme.Accent or self.Theme.Border
+            end
+            if active and t._label and t._label.Parent then
+                t._label.TextColor3 = self.Theme.Accent
+            end
+        end
+    end
+end
+
+function Library:_ApplyThemeLive()
+    local theme = self.Theme
+    for _, entry in ipairs(self.Registry) do
+        local col = theme[entry.Key]
+        local inst = entry.Instance
+        if col and inst and inst.Parent then
+            pcall(function()
+                if inst[entry.Property] ~= col then
+                    inst[entry.Property] = col
+                end
+            end)
+        end
+    end
+    self:_SyncDynamicTheme(false)
+end
+
+function Library:_RefreshThemeDynamic(themeKey)
+    self:_SyncDynamicTheme(true)
     if themeKey == "Accent" and not self._colorPickerDragging then
         self:_UpdateKeybindList()
     end
@@ -1598,7 +1632,9 @@ function Library:CreateWindow(cfg)
             })
         end
 
-        local function makeTabbox(parentColumn)
+    Library.Tabboxes = Library.Tabboxes or {}
+
+    local function makeTabbox(parentColumn)
             local box = New("Frame", {
                 Parent = parentColumn,
                 BackgroundColor3 = Library.Theme.SectionBackground,
@@ -1640,9 +1676,12 @@ function Library:CreateWindow(cfg)
             })
 
             local Tabbox = { Tabs = {}, _current = nil }
+            table.insert(Library.Tabboxes, Tabbox)
 
             local function selectTab(tab)
-                Library:CloseAllPopups()
+                if not Library._colorPickerDragging then
+                    Library:CloseAllPopups()
+                end
                 Tabbox._current = tab
                 for _, t in ipairs(Tabbox.Tabs) do
                     t.Page.Visible = false
@@ -1672,7 +1711,6 @@ function Library:CreateWindow(cfg)
                 Library:AddToRegistry(tabBtn, "BackgroundColor3", "Inline")
                 Corner(4, tabBtn)
                 local tabStroke = Stroke(tabBtn, Library.Theme.Border, 1, 0)
-                Library:AddToRegistry(tabStroke, "Color", "Border")
                 Padding(tabBtn, nil, 10, 10, 0, 0)
 
                 local tabLabel = New("TextLabel", {
@@ -1802,6 +1840,10 @@ function Library:_InitGlobals(main, mobile)
             end
         end
         self:_UpdateWatermark()
+    end)
+
+    Connect(RunService.Heartbeat, function()
+        self:_ApplyThemeLive()
     end)
 
     Connect(UserInputService.InputBegan, function(input, gpe)
@@ -2318,14 +2360,18 @@ function Library:_BuildSection(container, ctx)
             spawnFn(info.Callback, self.Value)
             Library:_UpdateDependencies()
         end
-        function Toggle:SetValue(v)
+        function Toggle:SetValue(v, skipFire)
             self.Value = v and true or false
-            Tween(fill, 0.12, { BackgroundTransparency = self.Value and 0 or 1 })
-            Tween(boxStroke, 0.12, { Color = self.Value and Library.Theme.Accent or Library.Theme.Border })
-            self:_fire()
+            fill.BackgroundTransparency = self.Value and 0 or 1
+            fill.BackgroundColor3 = Library.Theme.Accent
+            boxStroke.Color = self.Value and Library.Theme.Accent or Library.Theme.Border
+            if not skipFire then
+                self:_fire()
+            end
             return self
         end
         Toggle._boxStroke = boxStroke
+        Toggle._fill = fill
         Connect(box.MouseButton1Click, function() Toggle:SetValue(not Toggle.Value) end)
         function Toggle:AddColorPicker(cid, cinfo) return Library:_ColorPicker(holder, cid, cinfo) end
         function Toggle:AddKeyPicker(kid, kinfo)
@@ -3288,11 +3334,73 @@ end
 function Library:SaveTheme(name)
     if not hasFS() then return false end
     ensureFolders()
-    local data = { font = self.CurrentFontSpec, colors = {} }
+    local data = { font = self.CurrentFontSpec, colors = {}, background = nil }
     for k, c in pairs(self.Theme) do data.colors[k] = c:ToHex() end
+    local bg = self.BackgroundCfg
+    if bg then
+        local layers = bg.Layers or {}
+        data.background = {
+            Enabled = bg.Enabled and true or false,
+            Image = bg.Image or "none",
+            Blur = tonumber(bg.Blur) or 0.35,
+            Strength = tonumber(bg.Strength) or 0.55,
+            Layers = {
+                Dark = layers.Dark == true,
+                Page = layers.Page == true,
+                Section = layers.Section == true,
+            },
+        }
+    end
     local ok = pcall(function() fs.writefile("void/themes/" .. name .. ".json", HttpService:JSONEncode(data)) end)
     if ok then self:Notify("saved theme: " .. name) end
     return ok
+end
+
+function Library:_ApplyBackgroundThemeData(bg)
+    if type(bg) ~= "table" then return end
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    self.BackgroundCfg.Enabled = bg.Enabled and true or false
+    self.BackgroundCfg.Image = bg.Image or "none"
+    self.BackgroundCfg.Blur = math.clamp(tonumber(bg.Blur) or 0.35, 0, 1)
+    self.BackgroundCfg.Strength = math.clamp(tonumber(bg.Strength) or 0.55, 0, 1)
+    local layersIn = bg.Layers or {}
+    self.BackgroundCfg.Layers = {
+        Dark = layersIn.Dark == true,
+        Page = layersIn.Page == true,
+        Section = layersIn.Section == true,
+    }
+
+    local opts = self.Options or {}
+    local toggles = self.Toggles or {}
+    if toggles.bg_enabled and toggles.bg_enabled.SetValue then
+        pcall(function() toggles.bg_enabled:SetValue(self.BackgroundCfg.Enabled) end)
+    end
+    if opts.bg_image and opts.bg_image.SetValue then
+        self._bgListCache = nil
+        pcall(function()
+            if self._bgImageDropdown then
+                self:_SyncBackgroundImageList(self._bgImageDropdown)
+            end
+            opts.bg_image:SetValue(self.BackgroundCfg.Image)
+        end)
+    end
+    if opts.bg_layers and opts.bg_layers.SetValue then
+        local L = self.BackgroundCfg.Layers
+        pcall(function()
+            opts.bg_layers:SetValue({
+                dark = L.Dark == true,
+                page = L.Page == true,
+                section = L.Section == true,
+            })
+        end)
+    end
+    if opts.bg_blur and opts.bg_blur.SetValue then
+        pcall(function() opts.bg_blur:SetValue(math.floor(self.BackgroundCfg.Blur * 100 + 0.5)) end)
+    end
+    if opts.bg_strength and opts.bg_strength.SetValue then
+        pcall(function() opts.bg_strength:SetValue(math.floor(self.BackgroundCfg.Strength * 100 + 0.5)) end)
+    end
+    self:_ApplyBackgroundLayers()
 end
 
 function Library:LoadTheme(name)
@@ -3311,6 +3419,9 @@ function Library:LoadTheme(name)
             elseif data.font.enum then
                 self:SetFont({ enum = data.font.enum })
             end
+        end
+        if data.background then
+            self:_ApplyBackgroundThemeData(data.background)
         end
         self:Notify("loaded theme: " .. name)
         return true
