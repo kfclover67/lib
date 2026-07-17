@@ -221,6 +221,7 @@ local function Stroke(parent, color, thickness, transparency)
         Thickness = thickness or 1,
         Transparency = transparency or 0,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        LineJoinMode = Enum.LineJoinMode.Round,
         Parent = parent,
     })
 end
@@ -1475,6 +1476,7 @@ function Library:CreateWindow(cfg)
             ScrollBarThickness = 0,
             ScrollingDirection = Enum.ScrollingDirection.Y,
         })
+        Padding(left, 2)
         New("UIListLayout", { Parent = left, Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder })
 
         local right = New("ScrollingFrame", {
@@ -1489,6 +1491,7 @@ function Library:CreateWindow(cfg)
             ScrollBarThickness = 0,
             ScrollingDirection = Enum.ScrollingDirection.Y,
         })
+        Padding(right, 2)
         New("UIListLayout", { Parent = right, Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder })
 
         Tab.LeftColumn = left
@@ -1557,8 +1560,16 @@ function Library:CreateWindow(cfg)
         end)
 
         local function makeSection(parentColumn, sTitle, sSub)
-            local section = New("Frame", {
+            local wrap = New("Frame", {
                 Parent = parentColumn,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            })
+            Padding(wrap, 1)
+            local section = New("Frame", {
+                Parent = wrap,
                 BackgroundColor3 = Library.Theme.SectionBackground,
                 BorderSizePixel = 0,
                 Size = UDim2.new(1, 0, 0, 0),
@@ -1619,8 +1630,16 @@ function Library:CreateWindow(cfg)
     Library.Tabboxes = Library.Tabboxes or {}
 
     local function makeTabbox(parentColumn)
-            local box = New("Frame", {
+            local wrap = New("Frame", {
                 Parent = parentColumn,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            })
+            Padding(wrap, 1)
+            local box = New("Frame", {
+                Parent = wrap,
                 BackgroundColor3 = Library.Theme.SectionBackground,
                 BorderSizePixel = 0,
                 Size = UDim2.new(1, 0, 0, 0),
