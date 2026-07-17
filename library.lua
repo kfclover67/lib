@@ -197,7 +197,21 @@ local function New(class, props, children)
 end
 
 local function Corner(radius, parent)
-    return New("UICorner", { CornerRadius = UDim.new(0, radius or 4), Parent = parent })
+    local r = radius
+    if r == nil then
+        r = 8
+    elseif r <= 2 then
+        r = 6
+    elseif r == 3 then
+        r = 7
+    elseif r == 4 then
+        r = 7
+    elseif r == 5 then
+        r = 8
+    elseif r == 6 then
+        r = 10
+    end
+    return New("UICorner", { CornerRadius = UDim.new(0, r), Parent = parent })
 end
 
 local function Stroke(parent, color, thickness, transparency)
