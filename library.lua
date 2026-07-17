@@ -1969,6 +1969,7 @@ function Library:CreateWatermark(text)
         Font = self.Font, TextSize = 14, TextColor3 = self.Theme.LightText, Text = self.WatermarkText,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 151,
     })
+    self:AddToRegistry(lbl, "TextColor3", "LightText")
     New("UIPadding", { Parent = wm, PaddingRight = UDim.new(0, 12) })
     makeDraggable(wm)
     self.Watermark = wm
