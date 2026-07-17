@@ -582,55 +582,68 @@ function Library:Notify(text, duration)
     end
 
     local holder = self.NotifyHolder
-    if not holder then return nil end
+    if not holder or not holder.Parent then
+        return nil
+    end
 
-    local frame = New("Frame", {
-        Parent = holder,
-        BackgroundColor3 = self.Theme.SectionBackground,
-        BorderSizePixel = 0,
-        Size = UDim2.new(0, 10, 0, 32),
-        AutomaticSize = Enum.AutomaticSize.X,
-        ClipsDescendants = true,
-    })
-    self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
-    Corner(5, frame)
-    self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
-    New("Frame", {
-        Parent = frame, Size = UDim2.new(0, 2, 1, 0), BorderSizePixel = 0,
-        BackgroundColor3 = self.Theme.Accent,
-    })
-    local lbl = New("TextLabel", {
-        Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0),
-        Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
-        Font = self.Font, Text = text, TextSize = 14, TextColor3 = self.Theme.LightText,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    })
-    New("UIPadding", { Parent = frame, PaddingRight = UDim.new(0, 12) })
+    local ok, notify = pcall(function()
+        local frame = New("Frame", {
+            Parent = holder,
+            BackgroundColor3 = self.Theme.SectionBackground,
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 10, 0, 32),
+            AutomaticSize = Enum.AutomaticSize.X,
+            ClipsDescendants = true,
+        })
+        self:AddToRegistry(frame, "BackgroundColor3", "SectionBackground")
+        Corner(5, frame)
+        self:AddToRegistry(Stroke(frame, self.Theme.Border, 1, 0), "Color", "Border")
+        New("Frame", {
+            Parent = frame, Size = UDim2.new(0, 2, 1, 0), BorderSizePixel = 0,
+            BackgroundColor3 = self.Theme.Accent,
+        })
+        local lbl = New("TextLabel", {
+            Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0),
+            Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+            Font = self.Font, Text = tostring(text), TextSize = 14, TextColor3 = self.Theme.LightText,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        New("UIPadding", { Parent = frame, PaddingRight = UDim.new(0, 12) })
 
-    local notify = { Frame = frame, Label = lbl, Dismissed = false }
-    function notify:Dismiss()
-        if self.Dismissed then return self end
-        self.Dismissed = true
-        local f, l = self.Frame, self.Label
-        if f and f.Parent then
-            Tween(f, 0.2, { BackgroundTransparency = 1 })
-            Tween(l, 0.2, { TextTransparency = 1 })
-            task.delay(0.25, function()
-                if f and f.Parent then
-                    f:Destroy()
-                end
+        local n = { Frame = frame, Label = lbl, Dismissed = false }
+        function n:Dismiss()
+            if self.Dismissed then return self end
+            self.Dismissed = true
+            local f, l = self.Frame, self.Label
+            if f and f.Parent then
+                pcall(function()
+                    Tween(f, 0.2, { BackgroundTransparency = 1 })
+                    Tween(l, 0.2, { TextTransparency = 1 })
+                end)
+                task.delay(0.25, function()
+                    if f and f.Parent then
+                        pcall(function()
+                            f:Destroy()
+                        end)
+                    end
+                end)
+            end
+            return self
+        end
+
+        if duration ~= false then
+            task.delay(duration, function()
+                n:Dismiss()
             end)
         end
-        return self
-    end
 
-    if duration ~= false then
-        task.delay(duration, function()
-            notify:Dismiss()
-        end)
-    end
+        return n
+    end)
 
-    return notify
+    if ok then
+        return notify
+    end
+    return nil
 end
 
 local function makeRow(parent, height, order)
