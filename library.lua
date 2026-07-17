@@ -3486,61 +3486,145 @@ function Library:_BuildSkinChangerPage(page, cfg)
 
     local categories = cfg.Categories
     local selectedCategory = cfg.DefaultCategory
-    local categoryButtons = {}
+    local categoryDropdownBtn = nil
+    local categoryDropdownLabel = nil
+    local categoryPopup = nil
+    local categoryOptionButtons = {}
+
     if type(categories) == "table" and #categories > 0 then
         selectedCategory = selectedCategory or categories[1]
+
         local catRow = New("Frame", {
             Parent = skinListHolder,
             BackgroundTransparency = 1,
             Position = UDim2.fromOffset(0, 46),
             Size = UDim2.new(1, 0, 0, 26),
-            ZIndex = 3,
+            ZIndex = 5,
         })
-        New("UIListLayout", {
+
+        New("TextLabel", {
             Parent = catRow,
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalAlignment = Enum.HorizontalAlignment.Left,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 4),
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 52, 1, 0),
+            Font = self.Font,
+            Text = "type",
+            TextSize = 11,
+            TextColor3 = self.Theme.DarkText,
+            TextXAlignment = Enum.TextXAlignment.Left,
         })
-        local function refreshCategoryButtons()
-            for name, btn in pairs(categoryButtons) do
-                local active = name == selectedCategory
-                btn.BackgroundColor3 = active and self.Theme.Accent or self.Theme.Inline
-                btn.TextColor3 = active and Color3.new(1, 1, 1) or self.Theme.Text
+
+        categoryDropdownBtn = New("TextButton", {
+            Parent = catRow,
+            BackgroundColor3 = self.Theme.Inline,
+            AutoButtonColor = false,
+            Position = UDim2.fromOffset(52, 0),
+            Size = UDim2.new(1, -52, 1, 0),
+            Font = self.Font,
+            Text = "",
+            TextSize = 11,
+            TextColor3 = self.Theme.Text,
+            ZIndex = 6,
+        })
+        Corner(4, categoryDropdownBtn)
+        self:AddToRegistry(categoryDropdownBtn, "BackgroundColor3", "Inline")
+        self:AddToRegistry(Stroke(categoryDropdownBtn, self.Theme.Border, 1, 0), "Color", "Border")
+
+        categoryDropdownLabel = New("TextLabel", {
+            Parent = categoryDropdownBtn,
+            BackgroundTransparency = 1,
+            Position = UDim2.fromOffset(8, 0),
+            Size = UDim2.new(1, -28, 1, 0),
+            Font = self.Font,
+            Text = string.lower(tostring(selectedCategory)),
+            TextSize = 11,
+            TextColor3 = self.Theme.Text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 7,
+        })
+        self:AddToRegistry(categoryDropdownLabel, "TextColor3", "Text")
+
+        local arrow = New("TextLabel", {
+            Parent = categoryDropdownBtn,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -20, 0, 0),
+            Size = UDim2.fromOffset(16, 26),
+            Font = self.Font,
+            Text = "v",
+            TextSize = 10,
+            TextColor3 = self.Theme.DarkText,
+            ZIndex = 7,
+        })
+        self:AddToRegistry(arrow, "TextColor3", "DarkText")
+
+        categoryPopup = New("Frame", {
+            Parent = catRow,
+            BackgroundColor3 = self.Theme.SectionBackground,
+            BorderSizePixel = 0,
+            Position = UDim2.new(0, 52, 0, 28),
+            Size = UDim2.new(1, -52, 0, #categories * 24 + 8),
+            Visible = false,
+            ZIndex = 20,
+        })
+        Corner(4, categoryPopup)
+        self:AddToRegistry(categoryPopup, "BackgroundColor3", "SectionBackground")
+        self:AddToRegistry(Stroke(categoryPopup, self.Theme.Border, 1, 0), "Color", "Border")
+        New("UIListLayout", {
+            Parent = categoryPopup,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 2),
+        })
+        Padding(categoryPopup, 4)
+
+        local function setCategory(name, fire)
+            if not name then
+                return
             end
-        end
-        for i, name in ipairs(categories) do
-            local btn = New("TextButton", {
-                Parent = catRow,
-                BackgroundColor3 = self.Theme.Inline,
-                AutoButtonColor = false,
-                Size = UDim2.new(1 / #categories, -4, 1, 0),
-                Font = self.Font,
-                Text = string.lower(tostring(name)),
-                TextSize = 11,
-                TextColor3 = self.Theme.Text,
-                LayoutOrder = i,
-                ZIndex = 4,
-            })
-            Corner(4, btn)
-            self:AddToRegistry(btn, "BackgroundColor3", "Inline")
-            categoryButtons[name] = btn
-            Connect(btn.MouseButton1Click, function()
-                if selectedCategory == name then
-                    return
-                end
-                selectedCategory = name
-                refreshCategoryButtons()
+            selectedCategory = name
+            if categoryDropdownLabel then
+                categoryDropdownLabel.Text = string.lower(tostring(name))
+            end
+            for optName, btn in pairs(categoryOptionButtons) do
+                btn.TextColor3 = optName == selectedCategory and self.Theme.Accent or self.Theme.Text
+            end
+            if categoryPopup then
+                categoryPopup.Visible = false
+            end
+            if fire then
                 if cfg.OnCategoryChanged then
                     cfg.OnCategoryChanged(name)
                 elseif cfg._refreshSkins then
                     cfg._refreshSkins()
                 end
+            end
+        end
+
+        for i, name in ipairs(categories) do
+            local opt = New("TextButton", {
+                Parent = categoryPopup,
+                BackgroundTransparency = 1,
+                AutoButtonColor = false,
+                Size = UDim2.new(1, 0, 0, 22),
+                Font = self.Font,
+                Text = string.lower(tostring(name)),
+                TextSize = 11,
+                TextColor3 = name == selectedCategory and self.Theme.Accent or self.Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                LayoutOrder = i,
+                ZIndex = 21,
+            })
+            categoryOptionButtons[name] = opt
+            Connect(opt.MouseButton1Click, function()
+                setCategory(name, true)
             end)
         end
-        refreshCategoryButtons()
+
+        Connect(categoryDropdownBtn.MouseButton1Click, function()
+            if categoryPopup then
+                categoryPopup.Visible = not categoryPopup.Visible
+            end
+        end)
+
+        setCategory(selectedCategory, false)
         skinList.Position = UDim2.fromOffset(0, 76)
         skinList.Size = UDim2.new(1, 0, 1, -76)
     end
@@ -3891,14 +3975,30 @@ function Library:_BuildSkinChangerPage(page, cfg)
     end
 
     function SkinPage:SetCategory(name)
-        if not name or not categoryButtons[name] then
+        if not name then
+            return
+        end
+        local valid = false
+        if type(categories) == "table" then
+            for _, cat in ipairs(categories) do
+                if cat == name then
+                    valid = true
+                    break
+                end
+            end
+        end
+        if not valid then
             return
         end
         selectedCategory = name
-        for catName, btn in pairs(categoryButtons) do
-            local active = catName == selectedCategory
-            btn.BackgroundColor3 = active and Library.Theme.Accent or Library.Theme.Inline
-            btn.TextColor3 = active and Color3.new(1, 1, 1) or Library.Theme.Text
+        if categoryDropdownLabel then
+            categoryDropdownLabel.Text = string.lower(tostring(name))
+        end
+        for optName, btn in pairs(categoryOptionButtons) do
+            btn.TextColor3 = optName == selectedCategory and Library.Theme.Accent or Library.Theme.Text
+        end
+        if categoryPopup then
+            categoryPopup.Visible = false
         end
     end
 
