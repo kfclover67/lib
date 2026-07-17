@@ -363,20 +363,33 @@ function Library:SetTheme(themeKey, color)
     end
     if self.SyncTheme and self.SyncTheme[themeKey] and not self._themeSync then
         self._themeSync = true
-        pcall(function() self.SyncTheme[themeKey]:SetValue(color) end)
+        pcall(function() self.SyncTheme[themeKey]:SetValue(color, nil, true) end)
         self._themeSync = false
     end
-    self:_RefreshThemeDynamic()
+    if not self._colorPickerDragging then
+        self:_RefreshThemeDynamic(themeKey)
+    elseif themeKey == "Accent" then
+        for _, t in pairs(self.Toggles) do
+            if t._boxStroke then
+                t._boxStroke.Color = t.Value and self.Theme.Accent or self.Theme.Border
+            end
+        end
+    end
+    self:_ApplyBackgroundLayers()
 end
 
-function Library:_RefreshThemeDynamic()
-    if self._currentTabSelect then pcall(self._currentTabSelect) end
+function Library:_RefreshThemeDynamic(themeKey)
+    if self._currentTabRefresh then
+        pcall(self._currentTabRefresh)
+    end
     for _, t in pairs(self.Toggles) do
         if t._boxStroke then
             t._boxStroke.Color = t.Value and self.Theme.Accent or self.Theme.Border
         end
     end
-    self:_UpdateKeybindList()
+    if themeKey == "Accent" and not self._colorPickerDragging then
+        self:_UpdateKeybindList()
+    end
 end
 
 local boldMap = {
@@ -576,8 +589,10 @@ end
 function Library:CloseAllPopups(except)
     for popup, data in pairs(self.ActivePopups) do
         if popup ~= except and popup.Parent then
-            popup.Visible = false
-            self.ActivePopups[popup] = nil
+            if not (self._colorPickerDragging and popup == self._colorPickerActivePopup) then
+                popup.Visible = false
+                self.ActivePopups[popup] = nil
+            end
         end
     end
 end
@@ -1153,6 +1168,41 @@ function Library:CreateWindow(cfg)
     Stroke(main, Color3.fromRGB(0, 0, 0), 1, 0.3)
     Library.MainFrame = main
 
+    local bgImage = New("ImageLabel", {
+        Name = "VoidBackgroundImage",
+        Parent = main,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1),
+        Position = UDim2.fromScale(0, 0),
+        ZIndex = 0,
+        ScaleType = Enum.ScaleType.Crop,
+        ImageTransparency = 1,
+        Visible = false,
+    })
+    Corner(6, bgImage)
+    local bgFrost = New("Frame", {
+        Name = "VoidBackgroundFrost",
+        Parent = main,
+        BackgroundColor3 = Color3.fromRGB(10, 10, 12),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1),
+        ZIndex = 1,
+        Visible = false,
+    })
+    Corner(6, bgFrost)
+    Library.BackgroundImage = bgImage
+    Library.BackgroundFrost = bgFrost
+    Library.BackgroundSections = Library.BackgroundSections or {}
+    Library.BackgroundCfg = Library.BackgroundCfg or {
+        Enabled = false,
+        Image = "none",
+        Layers = { Dark = true, Page = true, Section = true },
+        Blur = 0.35,
+        Strength = 0.55,
+    }
+
     local uiScale = New("UIScale", { Parent = main, Scale = 1 })
     if mobile then uiScale.Scale = cfg.MobileScale or 0.6 end
     Library.UIScale = uiScale
@@ -1165,6 +1215,7 @@ function Library:CreateWindow(cfg)
         BorderSizePixel = 0,
     })
     Library:AddToRegistry(sidebar, "BackgroundColor3", "DarkBackground")
+    Library.SidebarFrame = sidebar
 
     Library:AddToRegistry(New("Frame", {
         Parent = sidebar,
@@ -1254,6 +1305,11 @@ function Library:CreateWindow(cfg)
         BorderSizePixel = 0,
     })
     Library:AddToRegistry(content, "BackgroundColor3", "PageBackground")
+    Library.ContentFrame = content
+    content.ZIndex = 2
+    sidebar.ZIndex = 2
+    titleHolder.ZIndex = 3
+    tabHolder.ZIndex = 3
 
     do
         local dragging, dragStart, startPos
@@ -1411,10 +1467,35 @@ function Library:CreateWindow(cfg)
         Tab.LeftColumn = left
         Tab.RightColumn = right
 
+        local function refreshTabVisuals()
+            for _, t in ipairs(Window.Tabs) do
+                local active = t.Page and t.Page.Visible
+                if active then
+                    t.Button.BackgroundTransparency = 0
+                    t.Button.BackgroundColor3 = Library.Theme.SectionBackground
+                    t._text.TextColor3 = Library.Theme.Accent
+                    if t._icon:IsA("ImageLabel") then
+                        t._icon.ImageColor3 = Library.Theme.Accent
+                    else
+                        t._icon.BackgroundColor3 = Library.Theme.Accent
+                    end
+                else
+                    t.Button.BackgroundTransparency = 1
+                    t._text.TextColor3 = Library.Theme.DarkText
+                    if t._icon:IsA("ImageLabel") then
+                        t._icon.ImageColor3 = Library.Theme.DarkText
+                    else
+                        t._icon.BackgroundColor3 = Library.Theme.DarkText
+                    end
+                end
+            end
+        end
+
         local function select()
             Library:CloseAllPopups()
             Library:CloseAllSearchPanels()
             Library._currentTabSelect = select
+            Library._currentTabRefresh = refreshTabVisuals
             for _, t in ipairs(Window.Tabs) do
                 t.Page.Visible = false
                 t.Button.BackgroundTransparency = 1
@@ -1461,6 +1542,7 @@ function Library:CreateWindow(cfg)
             Library:AddToRegistry(Stroke(section, Library.Theme.Border, 1, 0), "Color", "Border")
             Padding(section, 12)
             section:SetAttribute("VoidRowOrder", 0)
+            table.insert(Library.BackgroundSections, section)
 
             New("UIListLayout", {
                 Parent = section,
@@ -1519,6 +1601,7 @@ function Library:CreateWindow(cfg)
             Corner(5, box)
             Library:AddToRegistry(Stroke(box, Library.Theme.Border, 1, 0), "Color", "Border")
             Padding(box, 12)
+            table.insert(Library.BackgroundSections, box)
 
             New("UIListLayout", {
                 Parent = box,
@@ -1696,7 +1779,11 @@ function Library:_InitGlobals(main, mobile)
         for popup, data in pairs(self.ActivePopups) do
             if popup.Visible and data.PosFn then
                 local anchor = data.Anchor
-                if not anchor or not anchor.Parent or not isGuiShown(anchor) then
+                if self._colorPickerDragging and popup == self._colorPickerActivePopup then
+                    data.PosFn()
+                elseif self._colorPickerDragging then
+                    data.PosFn()
+                elseif not anchor or not anchor.Parent or not isGuiShown(anchor) then
                     self:ClosePopup(popup)
                 else
                     data.PosFn()
@@ -1711,6 +1798,9 @@ function Library:_InitGlobals(main, mobile)
     Connect(UserInputService.InputBegan, function(input, gpe)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+            if self._colorPickerDragging then
+                return
+            end
             local pos = input.Position
             for popup, data in pairs(self.ActivePopups) do
                 if popup.Visible then
@@ -1813,9 +1903,16 @@ function Library:CreateWatermark(text)
     self:AddToRegistry(wm, "BackgroundColor3", "SectionBackground")
     Corner(5, wm)
     self:AddToRegistry(Stroke(wm, self.Theme.Border, 1, 0), "Color", "Border")
-    New("Frame", { Parent = wm, Size = UDim2.new(0, 2, 1, 0), BorderSizePixel = 0,
-        BackgroundColor3 = self.Theme.Accent, ZIndex = 151 })
-    self:AddToRegistry(wm:FindFirstChildOfClass("Frame"), "BackgroundColor3", "Accent")
+    local accent = New("Frame", {
+        Parent = wm,
+        Position = UDim2.fromOffset(0, 6),
+        Size = UDim2.new(0, 2, 1, -12),
+        BorderSizePixel = 0,
+        BackgroundColor3 = self.Theme.Accent,
+        ZIndex = 151,
+    })
+    Corner(2, accent)
+    self:AddToRegistry(accent, "BackgroundColor3", "Accent")
     local lbl = New("TextLabel", {
         Parent = wm, BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0),
         Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
@@ -1850,6 +1947,195 @@ function Library:_UpdateWatermark()
         end)
     end
     self.WatermarkLabel.Text = string.format("%s  |  %d fps  |  %d ms", self.WatermarkText or "void", fps, ping)
+end
+
+local BG_IMAGE_EXTS = {
+    png = true, jpg = true, jpeg = true, webp = true, bmp = true, tga = true,
+}
+
+local function basenameFromPath(path)
+    if not path then return "" end
+    return tostring(path):gsub("\\", "/"):match("([^/]+)$") or tostring(path)
+end
+
+function Library:GetBackgroundImageList()
+    if hasFS() and fs.makefolder and fs.isfolder then
+        pcall(function()
+            if not fs.isfolder("void") then fs.makefolder("void") end
+            if not fs.isfolder("void/background") then fs.makefolder("void/background") end
+        end)
+    end
+    local list = { "none" }
+    if not (hasFS() and fs.listfiles) then
+        return list
+    end
+    local ok, files = pcall(fs.listfiles, "void/background")
+    if not ok or type(files) ~= "table" then
+        return list
+    end
+    local names = {}
+    for _, file in ipairs(files) do
+        local name = basenameFromPath(file)
+        local ext = string.lower(name:match("%.([^%.]+)$") or "")
+        if BG_IMAGE_EXTS[ext] then
+            table.insert(names, name)
+        end
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        table.insert(list, name)
+    end
+    return list
+end
+
+function Library:_ResolveBackgroundAsset(name)
+    if not name or name == "" or name == "none" then
+        return nil
+    end
+    if tostring(name):find("rbxasset") then
+        return name
+    end
+    if not getCustomAsset then
+        return nil
+    end
+    local path = "void/background/" .. basenameFromPath(name)
+    local ok, asset = pcall(getCustomAsset, path)
+    if ok and asset and asset ~= "" then
+        return asset
+    end
+    return nil
+end
+
+function Library:_ApplyBackgroundLayers()
+    local cfg = self.BackgroundCfg
+    local img = self.BackgroundImage
+    local frost = self.BackgroundFrost
+    if not (cfg and img and frost) then
+        return
+    end
+
+    local layers = cfg.Layers or {}
+    local strength = math.clamp(tonumber(cfg.Strength) or 0.55, 0, 0.92)
+    local blur = math.clamp(tonumber(cfg.Blur) or 0.35, 0, 1)
+    local asset = self:_ResolveBackgroundAsset(cfg.Image)
+    local active = cfg.Enabled and asset ~= nil
+        and (layers.Dark or layers.Page or layers.Section)
+
+    img.Visible = active
+    frost.Visible = active
+    if active then
+        if img.Image ~= asset then
+            img.Image = asset
+        end
+        img.ImageTransparency = math.clamp(blur * 0.25, 0, 0.45)
+        frost.BackgroundColor3 = self.Theme.DarkBackground or Color3.fromRGB(10, 10, 12)
+        frost.BackgroundTransparency = math.clamp(1 - (blur * 0.72), 0.2, 0.92)
+    else
+        img.Image = ""
+        img.ImageTransparency = 1
+        frost.BackgroundTransparency = 1
+    end
+
+    local darkT = (active and layers.Dark) and strength or 0
+    local pageT = (active and layers.Page) and strength or 0
+    local sectionT = (active and layers.Section) and strength or 0
+
+    if self.MainFrame then
+        self.MainFrame.BackgroundTransparency = darkT
+    end
+    if self.SidebarFrame then
+        self.SidebarFrame.BackgroundTransparency = darkT
+    end
+    if self.ContentFrame then
+        self.ContentFrame.BackgroundTransparency = pageT
+    end
+
+    local sections = self.BackgroundSections or {}
+    for i = #sections, 1, -1 do
+        local section = sections[i]
+        if section and section.Parent then
+            section.BackgroundTransparency = sectionT
+        else
+            table.remove(sections, i)
+        end
+    end
+end
+
+function Library:_SyncBackgroundImageList(dropdown)
+    local list = self:GetBackgroundImageList()
+    local current = (self.BackgroundCfg and self.BackgroundCfg.Image) or "none"
+    local prev = self._bgListCache
+    local same = prev and #prev == #list
+    if same then
+        for i, name in ipairs(list) do
+            if prev[i] ~= name then
+                same = false
+                break
+            end
+        end
+    end
+    self._bgListCache = list
+    if dropdown and dropdown.SetValues and not same then
+        local keep = current
+        dropdown:SetValues(list)
+        local found = false
+        for _, name in ipairs(list) do
+            if name == keep then
+                found = true
+                break
+            end
+        end
+        if found then
+            dropdown:SetValue(keep)
+        else
+            self.BackgroundCfg.Image = "none"
+            dropdown:SetValue("none")
+        end
+    end
+    self:_ApplyBackgroundLayers()
+    return list
+end
+
+function Library:SetBackgroundEnabled(v)
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    self.BackgroundCfg.Enabled = v and true or false
+    self:_ApplyBackgroundLayers()
+end
+
+function Library:SetBackgroundImage(name)
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    self.BackgroundCfg.Image = name or "none"
+    self:_ApplyBackgroundLayers()
+end
+
+function Library:SetBackgroundLayers(map)
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    local layers = { Dark = false, Page = false, Section = false }
+    if type(map) == "table" then
+        for k, on in pairs(map) do
+            local key = string.lower(tostring(k))
+            if on then
+                if key == "dark" then layers.Dark = true
+                elseif key == "page" then layers.Page = true
+                elseif key == "section" then layers.Section = true
+                end
+            end
+        end
+    end
+    self.BackgroundCfg.Layers = layers
+    self:_ApplyBackgroundLayers()
+end
+
+function Library:SetBackgroundBlur(v)
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    self.BackgroundCfg.Blur = math.clamp(tonumber(v) or 0, 0, 1)
+    self:_ApplyBackgroundLayers()
+end
+
+function Library:SetBackgroundStrength(v)
+    self.BackgroundCfg = self.BackgroundCfg or {}
+    self.BackgroundCfg.Strength = math.clamp(tonumber(v) or 0, 0, 1)
+    self:_ApplyBackgroundLayers()
 end
 
 local function resolveIgnoreConfig(info)
@@ -2622,7 +2908,7 @@ function Library:_ColorPicker(holder, id, info)
     local h, s, v = Color3.toHSV(color)
     local popup = New("Frame", {
         Parent = Library.ScreenGui, Visible = false, BackgroundColor3 = Library.Theme.SectionBackground,
-        BorderSizePixel = 0, Size = UDim2.fromOffset(200, info.Transparency ~= nil and 224 or 206), ZIndex = 60,
+        BorderSizePixel = 0, Size = UDim2.fromOffset(200, info.Transparency ~= nil and 224 or 206), ZIndex = 220,
     })
     Library:AddToRegistry(popup, "BackgroundColor3", "SectionBackground")
     Corner(5, popup)
@@ -2630,23 +2916,23 @@ function Library:_ColorPicker(holder, id, info)
     Padding(popup, 10)
     local svBox = New("ImageButton", {
         Parent = popup, Size = UDim2.new(1, 0, 0, 120), BackgroundColor3 = Color3.fromHSV(h, 1, 1),
-        AutoButtonColor = false, ZIndex = 61,
+        AutoButtonColor = false, ZIndex = 221,
     })
     Corner(4, svBox)
-    local whiteGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 61 })
+    local whiteGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 221 })
     Corner(4, whiteGrad)
     New("UIGradient", { Parent = whiteGrad, Color = ColorSequence.new(Color3.new(1,1,1)),
         Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
-    local blackGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0,0,0), BorderSizePixel = 0, ZIndex = 62 })
+    local blackGrad = New("Frame", { Parent = svBox, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0,0,0), BorderSizePixel = 0, ZIndex = 222 })
     Corner(4, blackGrad)
     New("UIGradient", { Parent = blackGrad, Rotation = 90, Color = ColorSequence.new(Color3.new(0,0,0)),
         Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) })
     local svCursor = New("Frame", { Parent = svBox, Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 63 })
+        BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 223 })
     Corner(4, svCursor)
     Stroke(svCursor, Color3.new(0,0,0), 1, 0)
     local hueBar = New("ImageButton", { Parent = popup, Position = UDim2.new(0, 0, 0, 130), Size = UDim2.new(1, 0, 0, 14),
-        AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61 })
+        AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 221 })
     Corner(4, hueBar)
     New("UIGradient", { Parent = hueBar, Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255,0,0)),
@@ -2658,23 +2944,23 @@ function Library:_ColorPicker(holder, id, info)
         ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255,0,0)),
     }) })
     local hueCursor = New("Frame", { Parent = hueBar, Size = UDim2.new(0, 3, 1, 2), AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 62 })
+        Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 222 })
     Stroke(hueCursor, Color3.new(0,0,0), 1, 0)
     local alphaBar, alphaCursor, alphaGrad
     if info.Transparency ~= nil then
         alphaBar = New("ImageButton", { Parent = popup, Position = UDim2.new(0, 0, 0, 150), Size = UDim2.new(1, 0, 0, 14),
-            AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 61 })
+            AutoButtonColor = false, BackgroundColor3 = Color3.new(1,1,1), ZIndex = 221 })
         Corner(4, alphaBar)
         alphaGrad = New("UIGradient", { Parent = alphaBar, Color = ColorSequence.new(color),
             Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
         alphaCursor = New("Frame", { Parent = alphaBar, Size = UDim2.new(0, 3, 1, 2), AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromScale(1 - transparency, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 62 })
+            Position = UDim2.fromScale(1 - transparency, 0.5), BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 222 })
         Stroke(alphaCursor, Color3.new(0,0,0), 1, 0)
     end
     local hexBox = New("TextBox", { Parent = popup, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
         Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Library.Theme.Inline, BorderSizePixel = 0,
         Font = Library.Font, TextSize = 14, TextColor3 = Library.Theme.LightText, Text = "#ffffff",
-        ClearTextOnFocus = false, ZIndex = 61 })
+        ClearTextOnFocus = false, ZIndex = 221 })
     Library:AddToRegistry(hexBox, "BackgroundColor3", "Inline")
     Corner(4, hexBox)
     Stroke(hexBox, Library.Theme.Border, 1, 0)
@@ -2697,47 +2983,12 @@ function Library:_ColorPicker(holder, id, info)
         end
         if not skipFire then fire() end
     end
-    local function bindDrag(obj, fn)
-        local down = false
-        Connect(obj.InputBegan, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                down = true
-                fn(input.Position)
-            end
-        end)
-        Connect(UserInputService.InputChanged, function(input)
-            if down and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then fn(input.Position) end
-        end)
-        Connect(UserInputService.InputEnded, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then down = false end
-        end)
-    end
-    bindDrag(svBox, function(pos)
-        s = math.clamp((pos.X - svBox.AbsolutePosition.X) / svBox.AbsoluteSize.X, 0, 1)
-        v = 1 - math.clamp((pos.Y - svBox.AbsolutePosition.Y) / svBox.AbsoluteSize.Y, 0, 1)
-        refresh()
-    end)
-    bindDrag(hueBar, function(pos)
-        h = math.clamp((pos.X - hueBar.AbsolutePosition.X) / hueBar.AbsoluteSize.X, 0, 1)
-        refresh()
-    end)
-    if alphaBar then
-        bindDrag(alphaBar, function(pos)
-            ColorPicker.Transparency = 1 - math.clamp((pos.X - alphaBar.AbsolutePosition.X) / alphaBar.AbsoluteSize.X, 0, 1)
-            refresh()
-        end)
-    end
-    Connect(hexBox.FocusLost, function()
-        local clean = hexBox.Text:gsub("#", "")
-        local okHex, col = pcall(Color3.fromHex, clean)
-        if okHex and col then h, s, v = Color3.toHSV(col); refresh() end
-    end)
     function ColorPicker:SetValueRGB(col) h, s, v = Color3.toHSV(col); refresh(); return self end
-    function ColorPicker:SetValue(value, trans)
+    function ColorPicker:SetValue(value, trans, skipFire)
         if typeof(value) == "Color3" then h, s, v = Color3.toHSV(value)
         elseif type(value) == "table" then h, s, v = value[1] or h, value[2] or s, value[3] or v end
         if trans ~= nil then ColorPicker.Transparency = trans end
-        refresh()
+        refresh(skipFire == true)
         return self
     end
     local function posFn()
@@ -2746,6 +2997,51 @@ function Library:_ColorPicker(holder, id, info)
             math.clamp(swatch.AbsolutePosition.X - 184, 4, vp.X - 210),
             math.clamp(swatch.AbsolutePosition.Y + 22, 4, vp.Y - popup.AbsoluteSize.Y - 4))
     end
+    local function bindDrag(obj, fn)
+        local down = false
+        Connect(obj.InputBegan, function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                down = true
+                Library._colorPickerDragging = true
+                Library._colorPickerActivePopup = popup
+                fn(input.Position)
+            end
+        end)
+        Connect(UserInputService.InputChanged, function(input)
+            if down and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                fn(input.Position)
+            end
+        end)
+        Connect(UserInputService.InputEnded, function(input)
+            if down and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                down = false
+                if Library._colorPickerActivePopup == popup then
+                    Library._colorPickerDragging = false
+                    Library._colorPickerActivePopup = nil
+                end
+            end
+        end)
+    end
+    bindDrag(svBox, function(pos)
+        s = math.clamp((pos.X - svBox.AbsolutePosition.X) / math.max(svBox.AbsoluteSize.X, 1), 0, 1)
+        v = 1 - math.clamp((pos.Y - svBox.AbsolutePosition.Y) / math.max(svBox.AbsoluteSize.Y, 1), 0, 1)
+        refresh()
+    end)
+    bindDrag(hueBar, function(pos)
+        h = math.clamp((pos.X - hueBar.AbsolutePosition.X) / math.max(hueBar.AbsoluteSize.X, 1), 0, 1)
+        refresh()
+    end)
+    if alphaBar then
+        bindDrag(alphaBar, function(pos)
+            ColorPicker.Transparency = 1 - math.clamp((pos.X - alphaBar.AbsolutePosition.X) / math.max(alphaBar.AbsoluteSize.X, 1), 0, 1)
+            refresh()
+        end)
+    end
+    Connect(hexBox.FocusLost, function()
+        local clean = hexBox.Text:gsub("#", "")
+        local okHex, col = pcall(Color3.fromHex, clean)
+        if okHex and col then h, s, v = Color3.toHSV(col); refresh() end
+    end)
     Connect(swatch.MouseButton1Click, function()
         if popup.Visible then Library:ClosePopup(popup) else Library:OpenPopup(popup, swatch, posFn) end
     end)
@@ -2817,6 +3113,7 @@ local function ensureFolders()
         if not fs.isfolder("void/configs") then fs.makefolder("void/configs") end
         if not fs.isfolder("void/themes") then fs.makefolder("void/themes") end
         if not fs.isfolder("void/fonts") then fs.makefolder("void/fonts") end
+        if not fs.isfolder("void/background") then fs.makefolder("void/background") end
     end)
 end
 
@@ -3189,6 +3486,62 @@ function Library:BuildSettingsTab(tab)
         local n = themeDropdown.Value
         if n and n ~= "no themes" then self:LoadTheme(n) end
     end })
+
+    self._ignoreConfig = false
+    local bgCfg = self.BackgroundCfg or {
+        Enabled = false,
+        Image = "none",
+        Layers = { Dark = true, Page = true, Section = true },
+        Blur = 0.35,
+        Strength = 0.55,
+    }
+    self.BackgroundCfg = bgCfg
+    local bgBox = tab:AddLeftGroupbox("background", "void/background images")
+    bgBox:AddToggle("bg_enabled", {
+        Text = "background image", Default = bgCfg.Enabled == true,
+        Callback = function(v) self:SetBackgroundEnabled(v) end,
+    })
+    local bgImages = self:GetBackgroundImageList()
+    local bgImageDrop = bgBox:AddDropdown("bg_image", {
+        Text = "image", Values = bgImages, Default = bgCfg.Image or "none",
+        Callback = function(v) self:SetBackgroundImage(v) end,
+    })
+    self._bgImageDropdown = bgImageDrop
+    local layerDefault = {}
+    local layers = bgCfg.Layers or {}
+    if layers.Dark ~= false then layerDefault.dark = true end
+    if layers.Page ~= false then layerDefault.page = true end
+    if layers.Section ~= false then layerDefault.section = true end
+    bgBox:AddDropdown("bg_layers", {
+        Text = "apply to", Values = { "dark", "page", "section" }, Multi = true,
+        Default = layerDefault,
+        Callback = function(v) self:SetBackgroundLayers(v) end,
+    })
+    bgBox:AddSlider("bg_blur", {
+        Text = "blur", Min = 0, Max = 100, Default = math.floor((bgCfg.Blur or 0.35) * 100), Suffix = "%",
+        Callback = function(v) self:SetBackgroundBlur(v / 100) end,
+    })
+    bgBox:AddSlider("bg_strength", {
+        Text = "strength", Min = 10, Max = 90, Default = math.floor((bgCfg.Strength or 0.55) * 100), Suffix = "%",
+        Callback = function(v) self:SetBackgroundStrength(v / 100) end,
+    })
+    bgBox:AddButton({ Text = "refresh images", Func = function()
+        self._bgListCache = nil
+        self:_SyncBackgroundImageList(bgImageDrop)
+        self:Notify("background images refreshed")
+    end })
+    self:_ApplyBackgroundLayers()
+    if not self._bgAutoRefresh then
+        self._bgAutoRefresh = true
+        task.spawn(function()
+            while self._bgAutoRefresh and self.ScreenGui and self.ScreenGui.Parent do
+                task.wait(2)
+                if self._bgImageDropdown then
+                    pcall(function() self:_SyncBackgroundImageList(self._bgImageDropdown) end)
+                end
+            end
+        end)
+    end
 
     self._ignoreConfig = true
     local panel = tab:AddRightGroupbox("game panel", "usefull utilities")
@@ -4168,6 +4521,7 @@ end
 function Library:Unload()
     if self.Unloaded then return end
     self.Unloaded = true
+    self._bgAutoRefresh = false
     for _, fn in ipairs(self.UnloadCallbacks) do
         pcall(fn)
     end
