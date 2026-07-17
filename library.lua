@@ -403,22 +403,6 @@ function Library:_SyncDynamicTheme(full)
     end
 end
 
-function Library:_ApplyThemeLive()
-    local theme = self.Theme
-    for _, entry in ipairs(self.Registry) do
-        local col = theme[entry.Key]
-        local inst = entry.Instance
-        if col and inst and inst.Parent then
-            pcall(function()
-                if inst[entry.Property] ~= col then
-                    inst[entry.Property] = col
-                end
-            end)
-        end
-    end
-    self:_SyncDynamicTheme(false)
-end
-
 function Library:_RefreshThemeDynamic(themeKey)
     self:_SyncDynamicTheme(true)
     if themeKey == "Accent" and not self._colorPickerDragging then
@@ -1840,10 +1824,6 @@ function Library:_InitGlobals(main, mobile)
             end
         end
         self:_UpdateWatermark()
-    end)
-
-    Connect(RunService.Heartbeat, function()
-        self:_ApplyThemeLive()
     end)
 
     Connect(UserInputService.InputBegan, function(input, gpe)
