@@ -577,16 +577,20 @@ function Library:CloseAllSearchPanels()
 end
 
 function Library:Notify(text, duration)
-    if duration == nil then
-        duration = 4
-    end
+    local ok, result = pcall(function()
+        if duration == nil then
+            duration = 4
+        end
 
-    local holder = self.NotifyHolder
-    if not holder or not holder.Parent then
-        return nil
-    end
+        local holder = self.NotifyHolder
+        local hasHolder = false
+        pcall(function()
+            hasHolder = holder ~= nil and holder.Parent ~= nil
+        end)
+        if not hasHolder then
+            return nil
+        end
 
-    local ok, notify = pcall(function()
         local frame = New("Frame", {
             Parent = holder,
             BackgroundColor3 = self.Theme.SectionBackground,
@@ -615,17 +619,21 @@ function Library:Notify(text, duration)
             if self.Dismissed then return self end
             self.Dismissed = true
             local f, l = self.Frame, self.Label
-            if f and f.Parent then
+            if f then
                 pcall(function()
-                    Tween(f, 0.2, { BackgroundTransparency = 1 })
-                    Tween(l, 0.2, { TextTransparency = 1 })
+                    if f.Parent then
+                        Tween(f, 0.2, { BackgroundTransparency = 1 })
+                        if l then
+                            Tween(l, 0.2, { TextTransparency = 1 })
+                        end
+                    end
                 end)
                 task.delay(0.25, function()
-                    if f and f.Parent then
-                        pcall(function()
+                    pcall(function()
+                        if f and f.Parent then
                             f:Destroy()
-                        end)
-                    end
+                        end
+                    end)
                 end)
             end
             return self
@@ -641,7 +649,7 @@ function Library:Notify(text, duration)
     end)
 
     if ok then
-        return notify
+        return result
     end
     return nil
 end
@@ -2947,7 +2955,12 @@ function Library:GetAutoload()
     if not hasFS() then return nil end
     if fs.isfile("void/configs/autoload.txt") then
         local ok, n = pcall(fs.readfile, "void/configs/autoload.txt")
-        if ok then return n end
+        if ok and n then
+            n = tostring(n):gsub("^%s+", ""):gsub("%s+$", "")
+            if n ~= "" then
+                return n
+            end
+        end
     end
     return nil
 end
@@ -3199,7 +3212,12 @@ end
 function Library:LoadAutoload()
     local name = self:GetAutoload()
     if name and name ~= "" then
-        task.spawn(function() self:LoadConfig(name) end)
+        task.spawn(function()
+            task.wait(0.35)
+            pcall(function()
+                self:LoadConfig(name)
+            end)
+        end)
     end
 end
 
