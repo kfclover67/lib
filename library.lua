@@ -1153,7 +1153,7 @@ function Library:CreateWindow(cfg)
     Library.ScreenGui = gui
 
     local centered = mobile or cfg.Center ~= false
-    local main = New("Frame", {
+    local mainProps = {
         Name = "Main",
         Parent = gui,
         Size = baseSize,
@@ -1161,8 +1161,17 @@ function Library:CreateWindow(cfg)
         Position = centered and UDim2.fromScale(0.5, 0.5) or UDim2.fromOffset(60, 60),
         BackgroundColor3 = Library.Theme.DarkBackground,
         BorderSizePixel = 0,
-        ClipsDescendants = true,
-    })
+    }
+    local main
+    local okCanvas, canvasInst = pcall(function()
+        return New("CanvasGroup", mainProps)
+    end)
+    if okCanvas and canvasInst then
+        main = canvasInst
+    else
+        mainProps.ClipsDescendants = true
+        main = New("Frame", mainProps)
+    end
     Library:AddToRegistry(main, "BackgroundColor3", "DarkBackground")
     Corner(6, main)
     Stroke(main, Color3.fromRGB(0, 0, 0), 1, 0.3)
