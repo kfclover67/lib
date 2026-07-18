@@ -61,7 +61,10 @@ local function ensureFontFolders()
     if not (fs.makefolder and fs.isfolder) then return end
     pcall(function()
         if not fs.isfolder("void") then fs.makefolder("void") end
-        if not fs.isfolder("void/fonts") then fs.makefolder("void/fonts") end
+        local shared = (Library and Library.GetSharedRoot and Library:GetSharedRoot()) or "void/randomshit"
+        if not fs.isfolder(shared) then fs.makefolder(shared) end
+        local fonts = shared .. "/fonts"
+        if not fs.isfolder(fonts) then fs.makefolder(fonts) end
     end)
 end
 
@@ -135,12 +138,74 @@ local Library = {
     Open      = true,
     IsMobile  = (UserInputService.TouchEnabled and not UserInputService.MouseEnabled),
     ConfigFolder = "void",
+    Profile = "dahood",
+    SharedFolder = "void/randomshit",
     KeybindListVisible = true,
     KeybindListMode = "toggled",
     UnloadCallbacks = {},
     Unloaded = false,
 }
 Library.__index = Library
+
+function Library:GetSharedRoot()
+    return self.SharedFolder or "void/randomshit"
+end
+
+function Library:GetProfileRoot()
+    local profile = self.Profile or "dahood"
+    if profile ~= "rivals" and profile ~= "dahood" then
+        profile = "dahood"
+    end
+    return "void/" .. profile
+end
+
+function Library:GetConfigsDir()
+    return self:GetProfileRoot() .. "/configs"
+end
+
+function Library:GetThemesDir()
+    return self:GetProfileRoot() .. "/themes"
+end
+
+function Library:GetBackgroundDir()
+    return self:GetProfileRoot() .. "/background"
+end
+
+function Library:GetFontsDir()
+    return self:GetSharedRoot() .. "/fonts"
+end
+
+function Library:GetSoundsDir()
+    return self:GetSharedRoot() .. "/sounds"
+end
+
+function Library:GetImagesDir()
+    return self:GetSharedRoot() .. "/images"
+end
+
+function Library:GetAutoloadConfigPath()
+    if (self.Profile or "dahood") == "rivals" then
+        return self:GetConfigsDir() .. "/rivals_autoloadconfig.txt"
+    end
+    return self:GetConfigsDir() .. "/dh_autoloadconfig.txt"
+end
+
+function Library:GetScriptAutoloadPath()
+    return self:GetProfileRoot() .. "/script_autoload.txt"
+end
+
+function Library:GetUnlockAllPath()
+    return self:GetProfileRoot() .. "/unlockall.json"
+end
+
+function Library:SetProfile(profile)
+    if profile ~= "rivals" and profile ~= "dahood" then
+        profile = "dahood"
+    end
+    self.Profile = profile
+    self.ConfigFolder = self:GetProfileRoot()
+    return self
+end
 
 do
     local genv = (getgenv and getgenv()) or _G
@@ -428,8 +493,8 @@ function Library:DownloadFont(name, link)
     ensureFontFolders()
 
     local safeName = cleanFileName(name)
-    local fontPath = "void/fonts/" .. safeName .. ".ttf"
-    local familyPath = "void/fonts/" .. safeName .. ".font"
+    local fontPath = Library:GetFontsDir() .. "/" .. safeName .. ".ttf"
+    local familyPath = Library:GetFontsDir() .. "/" .. safeName .. ".font"
 
     local data
     if fs.isfile(fontPath) then
@@ -509,8 +574,8 @@ function Library:FontIsCached(name)
     end
 
     local safeName = cleanFileName(name)
-    local fontPath = "void/fonts/" .. safeName .. ".ttf"
-    local familyPath = "void/fonts/" .. safeName .. ".font"
+    local fontPath = Library:GetFontsDir() .. "/" .. safeName .. ".ttf"
+    local familyPath = Library:GetFontsDir() .. "/" .. safeName .. ".font"
 
     if not fs.isfile(fontPath) or not fs.isfile(familyPath) then
         return false
@@ -2100,14 +2165,15 @@ function Library:GetBackgroundImageList()
     if hasFS() and fs.makefolder and fs.isfolder then
         pcall(function()
             if not fs.isfolder("void") then fs.makefolder("void") end
-            if not fs.isfolder("void/background") then fs.makefolder("void/background") end
+            local bgDir = Library:GetBackgroundDir()
+            if not fs.isfolder(bgDir) then fs.makefolder(bgDir) end
         end)
     end
     local list = { "none" }
     if not (hasFS() and fs.listfiles) then
         return list
     end
-    local ok, files = pcall(fs.listfiles, "void/background")
+    local ok, files = pcall(fs.listfiles, Library:GetBackgroundDir())
     if not ok or type(files) ~= "table" then
         return list
     end
@@ -2136,7 +2202,7 @@ function Library:_ResolveBackgroundAsset(name)
     if not getCustomAsset then
         return nil
     end
-    local path = "void/background/" .. basenameFromPath(name)
+    local path = Library:GetBackgroundDir() .. "/" .. basenameFromPath(name)
     local ok, asset = pcall(getCustomAsset, path)
     if ok and asset and asset ~= "" then
         return asset
@@ -3256,10 +3322,18 @@ local function ensureFolders()
     if not hasFS() then return end
     pcall(function()
         if not fs.isfolder("void") then fs.makefolder("void") end
-        if not fs.isfolder("void/configs") then fs.makefolder("void/configs") end
-        if not fs.isfolder("void/themes") then fs.makefolder("void/themes") end
-        if not fs.isfolder("void/fonts") then fs.makefolder("void/fonts") end
-        if not fs.isfolder("void/background") then fs.makefolder("void/background") end
+        local shared = Library:GetSharedRoot()
+        if not fs.isfolder(shared) then fs.makefolder(shared) end
+        for _, sub in ipairs({ "/fonts", "/sounds", "/images" }) do
+            local p = shared .. sub
+            if not fs.isfolder(p) then fs.makefolder(p) end
+        end
+        local root = Library:GetProfileRoot()
+        if not fs.isfolder(root) then fs.makefolder(root) end
+        for _, sub in ipairs({ "/configs", "/themes", "/background" }) do
+            local p = root .. sub
+            if not fs.isfolder(p) then fs.makefolder(p) end
+        end
     end)
 end
 
@@ -3365,7 +3439,7 @@ function Library:SaveConfig(name)
     ensureFolders()
     local data = self:GetConfigData()
     local ok = pcall(function()
-        fs.writefile("void/configs/" .. name .. ".json", HttpService:JSONEncode(data))
+        fs.writefile(Library:GetConfigsDir() .. "/" .. name .. ".json", HttpService:JSONEncode(data))
     end)
     if ok then self:Notify("saved config: " .. name) else self:Notify("failed to save config") end
     return ok
@@ -3373,7 +3447,7 @@ end
 
 function Library:LoadConfig(name)
     if not hasFS() then self:Notify("file system not supported") return false end
-    local path = "void/configs/" .. name .. ".json"
+    local path = Library:GetConfigsDir() .. "/" .. name .. ".json"
     if not fs.isfile(path) then self:Notify("config not found") return false end
     local ok, data = pcall(function() return HttpService:JSONDecode(fs.readfile(path)) end)
     if ok and data then self:ApplyConfigData(data); self:Notify("loaded config: " .. name); return true end
@@ -3383,7 +3457,7 @@ end
 
 function Library:DeleteConfig(name)
     if not hasFS() then return false end
-    local path = "void/configs/" .. name .. ".json"
+    local path = Library:GetConfigsDir() .. "/" .. name .. ".json"
     if fs.isfile(path) then pcall(fs.delfile, path); self:Notify("deleted config: " .. name); return true end
     return false
 end
@@ -3392,7 +3466,7 @@ function Library:GetConfigList()
     local list = {}
     if not hasFS() then return list end
     ensureFolders()
-    local ok, files = pcall(fs.listfiles, "void/configs")
+    local ok, files = pcall(fs.listfiles, Library:GetConfigsDir())
     if ok and files then
         for _, f in ipairs(files) do
             local name = f:match("([^/\\]+)%.json$")
@@ -3405,13 +3479,13 @@ end
 function Library:SetAutoload(name)
     if not hasFS() then return end
     ensureFolders()
-    pcall(fs.writefile, "void/configs/autoload.txt", name)
+    pcall(fs.writefile, Library:GetAutoloadConfigPath(), name)
 end
 
 function Library:GetAutoload()
     if not hasFS() then return nil end
-    if fs.isfile("void/configs/autoload.txt") then
-        local ok, n = pcall(fs.readfile, "void/configs/autoload.txt")
+    if fs.isfile(Library:GetAutoloadConfigPath()) then
+        local ok, n = pcall(fs.readfile, Library:GetAutoloadConfigPath())
         if ok and n then
             n = tostring(n):gsub("^%s+", ""):gsub("%s+$", "")
             if n ~= "" then
@@ -3442,7 +3516,7 @@ function Library:SaveTheme(name)
             },
         }
     end
-    local ok = pcall(function() fs.writefile("void/themes/" .. name .. ".json", HttpService:JSONEncode(data)) end)
+    local ok = pcall(function() fs.writefile(Library:GetThemesDir() .. "/" .. name .. ".json", HttpService:JSONEncode(data)) end)
     if ok then self:Notify("saved theme: " .. name) end
     return ok
 end
@@ -3496,7 +3570,7 @@ end
 
 function Library:LoadTheme(name)
     if not hasFS() then return false end
-    local path = "void/themes/" .. name .. ".json"
+    local path = Library:GetThemesDir() .. "/" .. name .. ".json"
     if not fs.isfile(path) then return false end
     local ok, data = pcall(function() return HttpService:JSONDecode(fs.readfile(path)) end)
     if ok and data then
@@ -3524,7 +3598,7 @@ function Library:GetThemeList()
     local list = {}
     if not hasFS() then return list end
     ensureFolders()
-    local ok, files = pcall(fs.listfiles, "void/themes")
+    local ok, files = pcall(fs.listfiles, Library:GetThemesDir())
     if ok and files then
         for _, f in ipairs(files) do
             local name = f:match("([^/\\]+)%.json$")
@@ -3707,7 +3781,7 @@ function Library:BuildSettingsTab(tab)
         Strength = 0.55,
     }
     self.BackgroundCfg = bgCfg
-    local bgBox = tab:AddLeftGroupbox("background", "void/background images")
+    local bgBox = tab:AddLeftGroupbox("background", Library:GetBackgroundDir() .. " images")
     bgBox:AddToggle("bg_enabled", {
         Text = "background image", Default = bgCfg.Enabled == true,
         Callback = function(v) self:SetBackgroundEnabled(v) end,
