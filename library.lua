@@ -198,12 +198,20 @@ function Library:GetUnlockAllPath()
     return self:GetProfileRoot() .. "/unlockall.json"
 end
 
+local ensureFolders
+
+function Library:EnsureAllFolders()
+    ensureFolders()
+    return self
+end
+
 function Library:SetProfile(profile)
     if profile ~= "rivals" and profile ~= "dahood" then
         profile = "dahood"
     end
     self.Profile = profile
     self.ConfigFolder = self:GetProfileRoot()
+    ensureFolders()
     return self
 end
 
@@ -3318,7 +3326,7 @@ function Library:_UpdateKeybindList()
     frame.Visible = shown > 0
 end
 
-local function ensureFolders()
+ensureFolders = function()
     if not hasFS() then return end
     pcall(function()
         if not fs.isfolder("void") then fs.makefolder("void") end
@@ -3328,11 +3336,13 @@ local function ensureFolders()
             local p = shared .. sub
             if not fs.isfolder(p) then fs.makefolder(p) end
         end
-        local root = Library:GetProfileRoot()
-        if not fs.isfolder(root) then fs.makefolder(root) end
-        for _, sub in ipairs({ "/configs", "/themes", "/background" }) do
-            local p = root .. sub
-            if not fs.isfolder(p) then fs.makefolder(p) end
+        for _, profile in ipairs({ "dahood", "rivals" }) do
+            local root = "void/" .. profile
+            if not fs.isfolder(root) then fs.makefolder(root) end
+            for _, sub in ipairs({ "/configs", "/themes", "/background" }) do
+                local p = root .. sub
+                if not fs.isfolder(p) then fs.makefolder(p) end
+            end
         end
     end)
 end
