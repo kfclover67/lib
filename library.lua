@@ -156,7 +156,7 @@ local Library = {
     },
     ImagesToDownload = {
         ["void.png"] = {
-            Link = "https://files.catbox.moe/29rq3t.png",
+            Link = "https://files.catbox.moe/66qv86.png",
             Paths = {
                 "void/rivals/background/void.png",
                 "void/dahood/background/void.png",
