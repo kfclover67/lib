@@ -163,6 +163,14 @@ local Library = {
                 "void/randomshit/images/void.png",
             },
         },
+        ["void_mascot.png"] = {
+            Link = "https://files.catbox.moe/4xyudd.png",
+            Paths = {
+                "void/rivals/background/void_mascot.png",
+                "void/dahood/background/void_mascot.png",
+                "void/randomshit/images/void_mascot.png",
+            },
+        },
     },
     Font     = Enum.Font.Gotham,
     FontMed  = Enum.Font.GothamMedium,
