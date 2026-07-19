@@ -1472,14 +1472,6 @@ function Library:CreateWindow(cfg)
     Corner(6, sidebar)
     Library.SidebarFrame = sidebar
 
-    Library:AddToRegistry(New("Frame", {
-        Parent = sidebar,
-        Position = UDim2.fromOffset(sidebarW - 1, 0),
-        Size = UDim2.new(0, 1, 1, 0),
-        BorderSizePixel = 0,
-        ZIndex = 4,
-    }), "BackgroundColor3", "Border")
-
     local titleHolder = New("Frame", {
         Name = "TitleHolder",
         Parent = sidebar,
