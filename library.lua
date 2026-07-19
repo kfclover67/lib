@@ -57,6 +57,29 @@ local function looksLikeFontData(data)
         or magic == "wOF2"
 end
 
+local function looksLikeImageData(data)
+    if type(data) ~= "string" or #data < 32 then
+        return false
+    end
+
+    local head = data:sub(1, 256):lower()
+    if head:find("<!doctype", 1, true) or head:find("<html", 1, true) or head:find("not found", 1, true) then
+        return false
+    end
+
+    local b1, b2, b3, b4 = data:byte(1, 4)
+    if b1 == 0x89 and b2 == 0x50 and b3 == 0x4E and b4 == 0x47 then
+        return true
+    end
+    if b1 == 0xFF and b2 == 0xD8 and b3 == 0xFF then
+        return true
+    end
+    if data:sub(1, 4) == "RIFF" and data:sub(9, 12) == "WEBP" then
+        return true
+    end
+    return false
+end
+
 local function ensureFontFolders()
     if not (fs.makefolder and fs.isfolder) then return end
     pcall(function()
@@ -131,6 +154,16 @@ local Library = {
         ["windows-xp-tahoma"] = { Link = "https://github.com/bestCheaterOnEarth/font/raw/refs/heads/main/FONTS/windows-xp-tahoma.ttf" },
         ["SmallestPixel"]     = { Link = "https://github.com/i77lhm/storage/raw/refs/heads/main/fonts/smallest_pixel-7.ttf" },
     },
+    ImagesToDownload = {
+        ["void.png"] = {
+            Link = "https://files.catbox.moe/29rq3t.png",
+            Paths = {
+                "void/rivals/background/void.png",
+                "void/dahood/background/void.png",
+                "void/randomshit/images/void.png",
+            },
+        },
+    },
     Font     = Enum.Font.Gotham,
     FontMed  = Enum.Font.GothamMedium,
     FontBold = Enum.Font.GothamBold,
@@ -202,6 +235,12 @@ local ensureFolders
 
 function Library:EnsureAllFolders()
     ensureFolders()
+    if not self._defaultImagesQueued then
+        self._defaultImagesQueued = true
+        task.spawn(function()
+            self:DownloadDefaultImages()
+        end)
+    end
     return self
 end
 
@@ -640,6 +679,114 @@ function Library:DownloadAllFonts()
     end
 
     return self.CustomFontAssets
+end
+
+function Library:ImageIsCached(path)
+    if not (fs.isfile and fs.readfile) or not path then
+        return false
+    end
+    if not fs.isfile(path) then
+        return false
+    end
+    local ok, cached = pcall(fs.readfile, path)
+    return ok and looksLikeImageData(cached)
+end
+
+function Library:AnyImagesNeedDownload()
+    if not (fs.writefile and fs.readfile and fs.isfile) then
+        return false
+    end
+    for _, info in pairs(self.ImagesToDownload or {}) do
+        if info and info.Link and type(info.Paths) == "table" then
+            for _, path in ipairs(info.Paths) do
+                if not self:ImageIsCached(path) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function Library:DownloadImageAsset(name, info)
+    if not (fs.writefile and fs.readfile and fs.isfile and info and info.Link) then
+        return false
+    end
+    if type(info.Paths) ~= "table" or #info.Paths == 0 then
+        return false
+    end
+
+    ensureFolders()
+
+    local missing = {}
+    for _, path in ipairs(info.Paths) do
+        if not self:ImageIsCached(path) then
+            table.insert(missing, path)
+        end
+    end
+    if #missing == 0 then
+        return true
+    end
+
+    local data
+    for _, path in ipairs(info.Paths) do
+        if self:ImageIsCached(path) then
+            local ok, cached = pcall(fs.readfile, path)
+            if ok and looksLikeImageData(cached) then
+                data = cached
+                break
+            end
+        end
+    end
+
+    if not data then
+        data = httpGet(info.Link)
+        if not looksLikeImageData(data) then
+            return false
+        end
+    end
+
+    local wrote = false
+    for _, path in ipairs(missing) do
+        local ok = pcall(fs.writefile, path, data)
+        if ok then
+            wrote = true
+        end
+    end
+    return wrote
+end
+
+function Library:DownloadDefaultImages()
+    if not (fs.writefile and fs.readfile and fs.isfile) then
+        return false
+    end
+    ensureFolders()
+
+    local notify
+    if self:AnyImagesNeedDownload() then
+        pcall(function()
+            notify = self:Notify("downloading images", false)
+        end)
+    end
+
+    for name, info in pairs(self.ImagesToDownload or {}) do
+        self:DownloadImageAsset(name, info)
+    end
+
+    if notify then
+        pcall(function()
+            notify:Dismiss()
+        end)
+    end
+
+    if self._bgImageDropdown then
+        self._bgListCache = nil
+        pcall(function()
+            self:_SyncBackgroundImageList(self._bgImageDropdown)
+        end)
+    end
+
+    return true
 end
 
 local function isGuiShown(obj)
@@ -1958,6 +2105,7 @@ function Library:CreateWindow(cfg)
 
     task.spawn(function()
         Library:DownloadAllFonts()
+        Library:DownloadDefaultImages()
     end)
 
     return Window
@@ -4824,5 +4972,11 @@ function Library:Unload()
     table.clear(self.Connections)
     if self.ScreenGui then self.ScreenGui:Destroy() end
 end
+
+task.spawn(function()
+    Library._defaultImagesQueued = true
+    ensureFolders()
+    Library:DownloadDefaultImages()
+end)
 
 return Library
